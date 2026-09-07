@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH 篇 III：DeFi 原理与交互实战</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html" class="cur">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">ETH 篇 III：DeFi 原理与交互实战</span><span class="chain chain-eth">ETH</span></header>
+<main class="doc">
+<h1>ETH 篇 III：DeFi 原理与交互实战</h1><p class="subtitle">从 AMM 数学到借贷清算，再到用 ethers v6 真实调用 Uniswap / Aave / Chainlink，掌握 DeFi 的可组合性与交互。主要参考：Uniswap 官方文档、Aave 文档、RareSkills Uniswap V3 Book、Damn Vulnerable DeFi。</p>
+<div class="goals"><b>本章目标：</b>
+<ul style="margin-bottom:0">
+<li>理解 DeFi 可组合性，能从数学推导 x*y=k、滑点与无常损失</li>
+<li>掌握 Uniswap V2/V3 架构、Aave/Compound 利率模型与清算流程</li>
+<li>厘清稳定币三范式、预言机、闪电贷、流动性质押与 MEV</li>
+<li>能用 ethers v6 完成读取储备、兑换、Aave 存取借还、读预言机、Multicall、事件监听</li>
+<li>会用 anvil fork 主网安全测试，并规划源码精读与闯关路线</li>
+</ul></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. DeFi 乐高与可组合性</a>
+<a href="#s2">2. AMM 数学推导：x*y=k、滑点与无常损失</a>
+<a href="#s3">3. Uniswap V2 架构与 V3/V4 简介</a>
+<a href="#s4">4. 借贷协议：Aave V3 与 Compound</a>
+<a href="#s5">5. 稳定币三范式对照</a>
+<a href="#s6">6. 预言机：Chainlink 与 TWAP</a>
+<a href="#s7">7. 闪电贷、流动性质押与再质押、DEX 聚合、MEV</a>
+<a href="#s8">8. 实战①：读取 V2 Pair 储备与兑换输出</a>
+<a href="#s9">9. 实战②：approve + Router 兑换全流程</a>
+<a href="#s10">10. 实战③：Aave V3 存借还取</a>
+<a href="#s11">11. 实战④⑤⑥：预言机、Multicall、价格监听机器人</a>
+<a href="#s12">12. 实战⑦：anvil fork 主网测试</a>
+<a href="#s13">13. 源码精读路线与生态链接表</a>
+<a href="#s14">14. 综合案例：循环贷与闪电贷原子套利</a>
+<a href="#s15">15. DeFi 风险总结与安全自检表</a>
+</div>
+
+<h2 id="s1">1. DeFi 乐高与可组合性</h2>
+<p>DeFi（去中心化金融）不是单个应用，而是一组<strong>开放、可互操作</strong>的货币积木。核心特征是<strong>可组合性（Composability）</strong>：一个协议能直接调用另一个协议，像乐高一样拼接。</p>
+<div class="note"><b>为什么能拼：</b>所有协议都是公开的智能合约，输入输出是标准化的（ERC20 代币、统一接口）。一笔交易内可以「在 Aave 抵押 ETH 借出 DAI → 到 Uniswap 把 DAI 换成 ETH → 把 ETH 存进 Lido 拿 stETH」，全程无需信任任何中介，且原子化（任一步失败整体回滚）。</div>
+
+<h3>1.1 可组合性代码直觉</h3>
+<p>「乐高」在代码层面就是「拿到一个合约地址 + 它的接口，直接调用」。下面用 ethers 演示如何在一份脚本里串联多个协议（伪流程，真实需先 approve）：</p>
+<pre><code>// 01-legos.js
+// 可组合性直觉：同一 wallet 连续调用不同协议，像拼积木
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545"); // fork
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+
+const aave = new ethers.Contract(AAVE_POOL, [
+  "function supply(address,uint256,address,uint16) external",
+], wallet);
+const uniswap = new ethers.Contract(ROUTER, [
+  "function swapExactTokensForTokens(uint,uint,address[],address,uint) external returns (uint[])",
+], wallet);
+const lido = new ethers.Contract(STETH, ["function submit(address) external payable"], wallet);
+
+// 积木 1：Aave 抵押 WETH
+await aave.supply(WETH, parseEther("1"), wallet.address, 0);
+// 积木 2：Uniswap 用借来的 DAI 换 WETH（需先 borrow + approve）
+await uniswap.swapExactTokensForTokens(usdcAmt, minOut, [USDC, WETH], wallet.address, deadline);
+// 积木 3：Lido 把 ETH 质押换 stETH
+await lido.submit(wallet.address, { value: parseEther("0.5") });
+
+// 以上三步若放在同一个合约函数里顺序执行，即「原子可组合」；
+// 用 JS 顺序发送则是多笔独立交易（任一步失败不会自动回滚前面的）。
+</code></pre>
+<div class="tip"><b>原子 vs 非原子：</b>真正的「乐高」威力在于把多步放进<strong>同一笔交易</strong>（一个合约函数内顺序 call），任一步 revert 整体回滚，没有中间态风险。用 ethers 逐笔发是「分步组合」，适合演示，但生产套利/清算必须合约内原子化。</div></p>
+<table>
+<tr><th>积木层</th><th>代表</th><th>提供能力</th></tr>
+<tr><td>资产层</td><td>ERC20/ERC721、USDC、stETH</td><td>可组合的价值载体</td></tr>
+<tr><td>交易层</td><td>Uniswap、Curve、1inch</td><td>兑换流动性</td></tr>
+<tr><td>借贷层</td><td>Aave、Compound</td><td>抵押借贷、生息</td></tr>
+<tr><td>预言机层</td><td>Chainlink、Uniswap TWAP</td><td>链下价格上链</td></tr>
+<tr><td>收益/衍生品层</td><td>Lido、Yearn、GMX</td><td>质押/杠杆/策略</td></tr>
+</table>
+
+<h2 id="s2">2. AMM 数学推导：x*y=k、滑点与无常损失</h2>
+<h3>2.1 恒定乘积 x*y=k</h3>
+<p>传统交易所有订单簿，AMM 用公式定价。Uniswap V2 的核心不变量：</p>
+<pre><code>reserve_token_x * reserve_token_y = k   (恒定)
+
+买入 dy 数量的 Y，需注入 dx 数量的 X：
+(x + dx)(y - dy) = k = x*y
+=&gt; dy = y * dx / (x + dx)            // 不考虑手续费
+含 0.3% 手续费（30/10000）：
+dx' = dx * 9970 / 10000
+dy = y * dx' / (x + dx')
+</code></pre>
+<p>价格由储备比定义：<code>price = y / x</code>（用 X 计价的 Y 价格）。每笔交易都会沿曲线移动价格点，天然产生「 slippage（滑点）」——你买得越多，实际成交价越差。</p>
+
+<h3>2.2 价格滑点公式</h3>
+<pre><code>// 给定输入 dx（X 资产），输出 dy（Y 资产）
+function getAmountOut(uint dx, uint x, uint y) pure returns (uint dy) {
+    uint dxAfter = dx * 997;          // 0.3% 费
+    dy = y * dxAfter / (1000 * x + dxAfter);
+}
+
+// 滑点 = (理想价 - 实际成交价) / 理想价
+// 理想价 = y/x（无限小交易量）
+// 实际成交价 = dy / dx（含费、含深度影响）
+</code></pre>
+
+<h4>2.2.1 数值示例：大单滑点有多痛</h4>
+<p>设储备 x=1000 ETH、y=2,000,000 USDC（即市价 2000 USDC/ETH）。若一次卖出 100 ETH：</p>
+<pre><code>// 用上面的 getAmountOut 计算
+x = 1000e18, y = 2000000e6, dx = 100e18
+dxAfter = 100e18 * 997 / 1000 = 99.7e18
+dy = 2000000e6 * 99.7e18 / (1000e18 * 1000 + 99.7e18)
+   = 199400000e24 / (1000997e18)         ≈ 199,201e6  // 约 199,201 USDC
+
+理想无费收入 = 100 * 2000 = 200,000 USDC
+实得         = 199,201 USDC
+滑点损耗     ≈ 799 USDC（约 0.4%）
+实际成交价   = 199201 / 100 ≈ 1992 USDC/ETH（比市价低 0.4%）
+</code></pre>
+<p>可见：交易量占池子比例越大，滑点越显著。这也是为什么大额兑换要走<strong>聚合器拆单</strong>或<strong>V3 集中流动性深区间</strong>来摊薄冲击。</p>
+<div class="tip"><b>价格冲击 vs 手续费：</b>上面 0.4% 里大部分来自「x*y=k 曲线移动」（价格冲击），仅 0.3% 是协议费。深度越浅，价格冲击占比越高。做 DEX 交互时，<code>amountOutMin</code> 应基于「含冲击的理论输出」再打折，而非基于市价。</div>
+
+<h3>2.3 无常损失（Impermanent Loss）数值示例</h3>
+<p>LP 提供双边流动性，当价格偏离初始比例时会比「单纯持有」亏一些。设初始 x=y=100，价格 1；若价格变为 4（Y 更贵）：</p>
+<table>
+<tr><th>情形</th><th>X 储备</th><th>Y 储备</th><th>组合价值</th></tr>
+<tr><td>初始（价=1）</td><td>100</td><td>100</td><td>200</td></tr>
+<tr><td>只持有（价=4）</td><td>100×4 + 100 = 500</td><td>—</td><td>500</td></tr>
+<tr><td>做 LP（k=10000，价=4 ⇒ x=50,y=200）</td><td>50×4=200</td><td>200</td><td>400</td></tr>
+</table>
+<p>LP 价值 400 &lt; 持有 500，差额 100 即无常损失（约 20%）。「无常」指若价格回到原点，损失消失——但只要撤出时偏离，损失就实锤。手续费收益是对冲 IL 的补偿。</p>
+<div class="tip"><b>直觉：</b>AMM 自动「低卖高买」——价格涨时 Y 被换走（你少了上涨资产），跌时 X 变多。波动越大 IL 越大，故稳定币对（波动小）的 LP 更受欢迎。</div>
+
+<h2 id="s3">3. Uniswap V2 架构与 V3/V4 简介</h2>
+<h3>3.1 V2：Factory / Pair / Router / LP</h3>
+<table>
+<tr><th>组件</th><th>职责</th></tr>
+<tr><td>Factory</td><td>按两种代币创建唯一 Pair 合约（地址确定性）</td></tr>
+<tr><td>Pair</td><td>持有双边储备，实现 x*y=k，发 LP token 记录份额</td></tr>
+<tr><td>Router</td><td>用户入口，计算路径（A→B→C）、收授权、执行 swap 并校验最小输出</td></tr>
+<tr><td>LP token</td><td>ERC20，代表在 Pair 中的流动性份额，可转让/质押</td></tr>
+</table>
+<pre><code>// V2 核心不变量（Pair 合约内伪代码）
+uint balance0 = IERC20(token0).balanceOf(address(this));
+uint balance1 = IERC20(token1).balanceOf(address(this));
+uint amount0In = balance0 - reserve0;   // 本次转入的 token0
+uint amount1In = balance1 - reserve1;
+// 扣除 0.3% 费后满足 k 不减
+require((balance0 - amount0In/1000*3) * (balance1 - amount1In/1000*3) &gt;= reserve0*reserve1);
+</code></pre>
+
+<h3>3.2 V3 集中流动性与 V4 hooks</h3>
+<table>
+<tr><th>版本</th><th>关键创新</th><th>影响</th></tr>
+<tr><td>V2</td><td>全区间 x*y=k</td><td>资金利用率低</td></tr>
+<tr><td>V3</td><td>集中流动性：LP 只在区间 [Pa,Pb] 内提供流动性，用 tick 划分价格刻度</td><td>资本效率高，但需主动管理；头寸是 NFT（非同质）</td></tr>
+<tr><td>V4</td><td>hooks：在 swap 前后插入自定义合约逻辑（费率动态、限价单、TWAMM）</td><td>极大可定制，单例 Factory 省 gas</td></tr>
+</table>
+<div class="note"><b>tick 是什么：</b>V3 把价格轴按 1.0001^t 的几何刻度切成离散 tick，LP 选定 [tickLower, tickUpper] 区间。只有当前价格落在区间内才参与做市，越窄区间单位资本深度越大、手续费越高，但越易被划出区间而暂时不赚费。</div>
+
+<h3>3.3 V3 tick 数值示例</h3>
+<p>价格与 tick 的关系为 <code>price = 1.0001^tick</code>。几个刻度对照：</p>
+<table>
+<tr><th>tick</th><th>价格（USDC/ETH）</th><th>含义</th></tr>
+<tr><td>0</td><td>1.0000</td><td>基准</td></tr>
+<tr><td>69,314</td><td>≈ 2000</td><td>对应市价 2000（ln(2000)/ln(1.0001) ≈ 69314）</td></tr>
+<tr><td>69,314 ± 1000</td><td>≈ 2000 × 1.0001^±1000</td><td>约 ±10% 区间</td></tr>
+</table>
+<pre><code>// 计算某价格对应的 tick（与 V3 内部一致，向下取整）
+function priceToTick(uint priceX96) pure returns (int24 tick) {
+    // 简化：用对数   tick = floor(log(price) / log(1.0001))
+    // 实际 V3 用 Q64.96 定点，这里仅示意数值关系
+    // price = 1.0001 ** tick  =&gt;  tick = ln(price) / ln(1.0001)
+}
+// 直觉：市价 2000 附近，tick 约 69314。
+// 若 LP 只提供 [68314, 70314]（±约 2%），则价格在此 ±2% 内
+// 这段极窄区间的资本效率远高于 V2 全区间；但价格一旦冲出，
+// 该头寸全部变为单一资产（不再赚费），需手动再平衡。
+</code></pre>
+<div class="tip"><b>选区间的权衡：</b>窄区间 = 高手续费收益但需频繁再平衡（gas 成本+被划出风险）；宽区间 = 被动但收益低。被动型 LP 常选宽区间（如 ±50%~±100%），主动型做市商用窄区间追求高 APR。</div>
+
+<h2 id="s4">4. 借贷协议：Aave V3 与 Compound</h2>
+<h3>4.1 利率模型（利用率拐点曲线）</h3>
+<p>借贷利率随<strong>利用率 U = 借出总额 / 存款总额</strong>变化。为鼓励健康，采用「拐点（kink）」模型：U 低于拐点时平缓上升，超过拐点后陡升，迫使借款人还款以恢复 liquidity。</p>
+<pre><code>// 简化利率模型（Aave/Compound 思路一致）
+function borrowRate(uint U) pure returns (uint) {
+    uint kink = 80;                    // 80% 拐点
+    if (U &lt;= kink) {
+        return baseRate + U * slope1;  // 平缓段
+    } else {
+        return baseRate + kink * slope1 + (U - kink) * slope2; // 陡升段(slope2&gt;&gt;slope1)
+    }
+}
+</code></pre>
+
+<h3>4.2 aToken / cToken 计息</h3>
+<table>
+<tr><th>协议</th><th>计息代币</th><th>机制</th></tr>
+<tr><td>Aave V3</td><td>aToken（aUSDC）</td><td>余额随时间按指数增长，1 aUSDC 始终可赎回 &gt; 1 USDC</td></tr>
+<tr><td>Compound</td><td>cToken（cUSDC）</td><td>兑换率 exchangeRate 随时间上升，c 数量不变但价值增</td></tr>
+</table>
+
+<h3>4.3 健康因子与清算流程</h3>
+<pre><code>健康因子 HF = (抵押品价值 * 清算阈值) / 债务价值
+- HF &gt; 1：安全
+- HF &lt; 1：可被清算
+
+清算人操作：
+1) 替借款人偿还一部分债务（获得折扣价的抵押品作为奖励，如 5% bonus）
+2) 协议把对应抵押品转给清算人
+清算人收益 = 清算奖励 -  gas/价差成本
+</code></pre>
+<div class="warn"><b>风险：</b>当抵押品价格暴跌（或债务币种暴涨），HF 跌破 1 即被清算，且清算往往发生在行情最差时，是借贷用户最大风险点。务必留足缓冲、关注预言机延迟。</div>
+
+<h4>4.3.1 数值示例：抵押率与安全垫</h4>
+<p>假设你存入价值 15,000 USDC 的 ETH（清算阈值 80%），借出 6,000 USDC：</p>
+<pre><code>抵押品价值   = 15000 USDC
+清算阈值     = 80%  =&gt; 可借上限 = 15000 * 0.8 = 12000 USDC
+当前债务     = 6000 USDC
+HF = (15000 * 0.8) / 6000 = 12000 / 6000 = 2.0     // 安全
+
+若 ETH 跌 30%：抵押品变 15000 * 0.7 = 10500
+HF = (10500 * 0.8) / 6000 = 8400 / 6000 = 1.4      // 仍安全
+
+若 ETH 跌 50%：抵押品变 7500
+HF = (7500 * 0.8) / 6000 = 6000 / 6000 = 1.0      // 临界，随时被清算
+// 所以即便 HF=2 起步，单抵押 50% 跌幅也会清零，必须留更大缓冲或分散抵押。
+</code></pre>
+<div class="tip"><b>经验值：</b>普通用户保持 HF ≥ 1.5（即抵押率远高于借款），并把单抵押品的潜在跌幅控制在「缓冲内」。用 Aave 的 <code>getUserAccountData</code> 实时监控 HF，写个告警 bot 比事后补救更稳。</div>
+
+<h2 id="s5">5. 稳定币三范式对照</h2>
+<table>
+<tr><th>范式</th><th>代表</th><th>锚定机制</th><th>风险</th></tr>
+<tr><td>法币托管</td><td>USDC、USDT</td><td>链下法币 1:1 储备（审计托管）</td><td>中心化冻结、储备透明度</td></tr>
+<tr><td>超额抵押</td><td>DAI</td><td>链上加密资产超额抵押（如 150% 的 ETH）</td><td>抵押品暴跌需清算</td></tr>
+<tr><td>算法（无抵押）</td><td>UST（已崩）</td><td>算法供需调节 + 铸烧毁锚</td><td>死亡螺旋，# 脱锚归零</td></tr>
+</table>
+<div class="warn"><b>UST 教训：</b>2022 年 Terra/UST 靠「质押赚高息吸引需求、抛压时用销毁 UST 铸 LUNA 接盘」维持锚定。一旦信心崩塌，LUNA 无限增发致价格崩塌，UST 彻底脱锚归零——证明无储备的算法稳定币在极端行情下缺乏支撑。这是 DeFi 史上最重要的反面教材。</div>
+
+<h2 id="s6">6. 预言机：Chainlink 与 TWAP</h2>
+<h3>6.1 Chainlink 聚合喂价</h3>
+<p>Chainlink 由多个独立节点对价格「投票取中位数」，写入链上<strong>聚合器合约</strong>。读取只需一次调用：</p>
+<pre><code>// 取 ETH/USD 最新轮次（见实战④）
+(roundId, answer, startedAt, updatedAt, answeredInRound) = aggregator.latestRoundData();
+// answer 是带 8 位小数的整数，如 3000e8 表示 $3000
+</code></pre>
+
+<h3>6.2 Uniswap TWAP（时间加权平均价）</h3>
+<p>TWAP 用一段时间内的累积价（价格×时间）求平均，抗「瞬时插针」操纵，但响应慢。适合「不太需要实时、但要抗操纵」的场景。</p>
+
+<h3>6.3 操纵攻击案例</h3>
+<div class="warn"><b>典型攻击：</b>某借贷协议用「单一 Uniswap V2 现货价」做抵押品估值。攻击者先用闪电贷拉高该池价格（瞬间现货价虚高），以此虚高抵押品借走真实资产，再让价格回落——净赚差价。防御：用 Chainlink/TWAP、设心跳（heartbeat）过期、价格偏差上限。</div>
+
+<h2 id="s7">7. 闪电贷、流动性质押与再质押、DEX 聚合、MEV</h2>
+<h3>7.1 闪电贷原理与典型攻击</h3>
+<p>闪电贷（Aave/Uniswap/balancer 均支持）规则：<strong>同一笔交易内借出、使用、归还</strong>，否则整笔回滚。因原子性，你无需抵押即可借巨额资金做套利/清算/操纵测试。</p>
+<pre><code>// Aave V3 闪电贷回调（示意）
+function executeOperation(address asset, uint256 amount, uint256 fee, address, bytes calldata) external returns (bool) {
+    // 1) 用借来的 amount 做某事：套利 / 操纵后套利 / 自救清算
+    // 2) 必须归还 amount + fee
+    IERC20(asset).approve(pool, amount + fee);
+    return true; // 否则交易 revert，借款当没发生
+}
+</code></pre>
+<div class="note"><b>攻击≠非法：</b>闪电贷本身是中性工具。被用于「先借巨资操纵预言机/拉盘再砸盘」才是攻击。防御方应加固喂价、限额。对学习者，闪电贷最适合做无本金的套利/清算演练。</div>
+
+<h3>7.2 Lido / stETH 与 EigenLayer 再质押</h3>
+<table>
+<tr><th>概念</th><th>说明</th></tr>
+<tr><td>流动性质押 Lido</td><td>质押 ETH 得 stETH，stETH 随质押奖励缓慢 rebasing 增值，可继续在 DeFi 里用（如抵押借出）</td></tr>
+<tr><td>再质押 EigenLayer</td><td>把已质押的 ETH（或 LST）再「复用」去保护其他中间件/AVS，赚取额外收益，但叠加被罚没风险</td></tr>
+</table>
+
+<h3>7.3 DEX 聚合器 1inch 与 MEV</h3>
+<p><b>1inch</b> 等聚合器把一笔大额兑换拆到多个池/多步路径，寻找最优成交价，减少滑点。</p>
+<p><b>MEV（最大可提取价值）：</b>验证者/搜索者通过排序交易获利：</p>
+<table>
+<tr><th>类型</th><th>机制</th><th>用户影响</th></tr>
+<tr><td>抢跑 Front-running</td><td>看到你的大单先插队同方向</td><td>你成交价变差</td></tr>
+<tr><td>三明治 Sandwich</td><td>你之前买入推高、你之后卖出，夹击吃价差</td><td>严重滑点损失</td></tr>
+<tr><td>套利 Arbitrage</td><td>跨池价格差搬平</td><td>中性，甚至有益</td></tr>
+</table>
+<div class="tip"><b>保护：</b>用 <code>swapExactTokensForTokens</code> 务必设 <code>amountOutMin</code>（最小接收）防三明治；Flashbots / 私有内存池可把交易直接交给验证者，避开公开 mempool 被夹。理解 MEV 是设计安全 DeFi 交互的前提。</div>
+
+<h2 id="s8">8. 实战①：读取 V2 Pair 储备与兑换输出</h2>
+<pre><code>// 08-read-pair.js
+// 读取 Uniswap V2 某交易对储备，并本地计算兑换输出
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+
+// V2 Pair 的标准 ABI（只需用到的函数）
+const PAIR_ABI = [
+  "function getReserves() external view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast)",
+  "function token0() external view returns (address)",
+  "function token1() external view returns (address)",
+];
+
+// 主网 WETH/USDC 地址（Sepolia 上请替换为你部署/已有的 Pair）
+const PAIR = "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"; // 示例：主网 WETH/USDC
+
+const pair = new ethers.Contract(PAIR, PAIR_ABI, provider);
+const [r0, r1] = await pair.getReserves();
+const t0 = await pair.token0();
+const t1 = await pair.token1();
+console.log("token0:", t0, "reserve0:", r0.toString());
+console.log("token1:", t1, "reserve1:", r1.toString());
+
+// 本地复刻 getAmountOut（含 0.3% 费）
+function getAmountOut(amountIn, reserveIn, reserveOut) {
+  const inAfter = amountIn * 997n;
+  return reserveOut * inAfter / (reserveIn * 1000n + inAfter);
+}
+// 假设用 1e18 个 token0 换 token1
+const out = getAmountOut(ethers.parseUnits("1", 18), r0, r1);
+console.log("1 token0 约换得 token1:", ethers.formatUnits(out, 18));
+</code></pre>
+<div class="tip"><b>提示：</b>Sepolia 没有真实的 WETH/USDC 深度，练习时可在 anvil fork 主网（见 12 节）使用真实地址，或用上篇部署的 MiniAMM 类比。本文示例地址以主网为例，fork 时直接可用。</div>
+
+<h2 id="s9">9. 实战②：approve + Router 兑换全流程</h2>
+<pre><code>// 09-swap.js
+// 完整流程：授权 Router 花费代币 → 调 swapExactTokensForTokens
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+
+// 主网地址示例（fork 时直接用）
+const ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap V2 Router
+const TOKEN_IN = "0x...";   // 输入代币（如 DAI）
+const TOKEN_OUT = "0x...";  // 输出代币（如 WETH）
+
+const erc20 = new ethers.Contract(TOKEN_IN, [
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+], wallet);
+
+const router = new ethers.Contract(ROUTER, [
+  "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory)",
+], wallet);
+
+const amountIn = ethers.parseUnits("100", 18); // 100 DAI
+const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 分钟有效期
+
+// 1) 授权 Router 花费（必要时）
+const allowed = await erc20.allowance(wallet.address, ROUTER);
+if (allowed &lt; amountIn) {
+  const tx = await erc20.approve(ROUTER, amountIn);
+  await tx.wait();
+  console.log("已授权 Router 花费", amountIn.toString());
+}
+
+// 2) 先估算最小输出（用上节 getAmountOut 逻辑，预留 0.5% 滑点缓冲）
+const minOut = amountIn * 995n / 1000n; // 简化：实际应读储备计算
+
+// 3) 兑换：DAI -&gt; WETH
+const path = [TOKEN_IN, TOKEN_OUT];
+const swapTx = await router.swapExactTokensForTokens(
+  amountIn,
+  minOut,
+  path,
+  wallet.address,
+  deadline,
+  { maxFeePerGas: ethers.parseUnits("3", "gwei") }
+);
+const receipt = await swapTx.wait();
+console.log("兑换完成，区块:", receipt.blockNumber, "gasUsed:", receipt.gasUsed.toString());
+</code></pre>
+<div class="warn"><b>滑点保护：</b><code>amountOutMin</code> 是反三明治/反失败的关键。设得过低会被夹；设得过高在大波动时交易会 revert。生产应实时读储备算理论输出再打折（如 0.3%~1%），而非写死。</div>
+
+<h2 id="s10">10. 实战③：Aave V3 存借还取</h2>
+<pre><code>// 10-aave.js
+// Aave V3 Pool：supply 存款生息 / borrow 借款 / repay 还款 / withdraw 取回
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+
+// 主网 V3 Pool（Sepolia 有单独部署地址，fork 时直接用主网地址）
+const POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+
+const pool = new ethers.Contract(POOL, [
+  "function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external",
+  "function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external",
+  "function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf) external returns (uint256)",
+  "function withdraw(address asset, uint256 amount, address to) external returns (uint256)",
+  "function getUserAccountData(address user) external view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
+], wallet);
+
+const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const amount = ethers.parseUnits("100", 6); // 100 USDC（6 位小数）
+
+// 0) 先 approve Pool 花费 USDC（同实战②逻辑，略）
+const erc20 = new ethers.Contract(USDC, ["function approve(address,uint256) external returns (bool)"], wallet);
+await (await erc20.approve(POOL, amount)).wait();
+
+// 1) 存款
+await (await pool.supply(USDC, amount, wallet.address, 0)).wait();
+console.log("已存入 100 USDC");
+
+// 2) 借款（2 = 浮动利率模式；借 WETH，金额需 &lt; availableBorrows）
+const borrowAmt = ethers.parseUnits("0.01", 18);
+await (await pool.borrow(WETH, borrowAmt, 2, 0, wallet.address)).wait();
+console.log("已借 0.01 WETH");
+
+// 3) 查看健康因子
+const data = await pool.getUserAccountData(wallet.address);
+console.log("健康因子:", ethers.formatUnits(data.healthFactor, 18));
+
+// 4) 还款（先把 WETH approve 给 Pool）
+const weth = new ethers.Contract(WETH, ["function approve(address,uint256) external returns (bool)"], wallet);
+await (await weth.approve(POOL, borrowAmt)).wait();
+await (await pool.repay(WETH, borrowAmt, 2, wallet.address)).wait();
+console.log("已还清 WETH 借款");
+
+// 5) 取回存款
+await (await pool.withdraw(USDC, amount, wallet.address)).wait();
+console.log("已取回 100 USDC");
+</code></pre>
+<div class="tip"><b>利率模式：</b>Aave 的 <code>interestRateMode</code>：1 = 稳定利率（V3 已弃用稳定），2 = 浮动利率。借款前务必读 <code>getUserAccountData</code> 确认 <code>healthFactor &gt; 1</code> 且有足够 <code>availableBorrowsBase</code>。</div>
+
+<h2 id="s11">11. 实战④⑤⑥：预言机、Multicall、价格监听机器人</h2>
+<h3>11.1 ④ Chainlink 读 ETH/USD</h3>
+<pre><code>// 11a-chainlink.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+// Sepolia 上的 ETH/USD 聚合器（主网地址不同，fork 用主网）
+const AGG = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"; // 主网 ETH/USD
+
+const agg = new ethers.Contract(AGG, [
+  "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+  "function decimals() external view returns (uint8)",
+], provider);
+
+const decimals = await agg.decimals();
+const [, answer, , updatedAt] = await agg.latestRoundData();
+console.log("ETH/USD:", ethers.formatUnits(answer, decimals));
+console.log("更新时间:", new Date(Number(updatedAt) * 1000).toISOString());
+</code></pre>
+
+<h3>11.2 ⑤ Multicall 批量读多个代币余额</h3>
+<pre><code>// 11b-multicall.js
+// 用 Multicall3 合约一次 RPC 批量读多个 ERC20 余额
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11"; // 通用部署地址
+const owner = "0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0";
+
+const tokens = [
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
+  "0x6B175474E89094C44Da98b954EedeAC495271d0F", // DAI
+];
+const erc20Fragment = ["function balanceOf(address) external view returns (uint256)"];
+
+const multicall = new ethers.Contract(MULTICALL3, [
+  "function aggregate(tuple(address target, bytes callData)[] calls) external view returns (uint256 blockNumber, bytes[] returnData)",
+], provider);
+
+const calls = tokens.map(t =&gt; ({
+  target: t,
+  callData: new ethers.Interface(erc20Fragment).encodeFunctionData("balanceOf", [owner]),
+}));
+const [, returnData] = await multicall.aggregate(calls);
+const iface = new ethers.Interface(erc20Fragment);
+returnData.forEach((d, i) =&gt; {
+  const bal = iface.decodeFunctionResult("balanceOf", d)[0];
+  console.log(tokens[i], "余额:", bal.toString());
+});
+</code></pre>
+<div class="tip"><b>为什么用 Multicall：</b>逐一代币 <code>balanceOf</code> 要 N 次 RPC 往返；Multicall 把多次只读调用打包成一笔聚合调用，省延迟与配额，是前端展示多资产余额的标准做法。</div>
+
+<h3>11.3 ⑥ 监听 Swap 事件做价格监听机器人雏形</h3>
+<pre><code>// 11c-price-bot.js
+// 监听某 Pair 的 Swap 事件，实时推算价格（机器人雏形）
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const PAIR = "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"; // WETH/USDC
+
+const pair = new ethers.Contract(PAIR, [
+  "event Swap(address indexed sender, uint amount0In, uint amount1In, uint amount0Out, uint amount1Out, address indexed to)",
+  "function getReserves() external view returns (uint112,uint112,uint32)",
+], provider);
+
+console.log("监听 Swap 事件...");
+pair.on("Swap", async (sender, a0In, a1In, a0Out, a1Out, to) =&gt; {
+  const [r0, r1] = await pair.getReserves();
+  // r0=WETH, r1=USDC（示例），价格 = USDC/WETH
+  const price = Number(ethers.formatUnits(r1, 6)) / Number(ethers.formatUnits(r0, 18));
+  console.log(`Swap by ${sender.slice(0,8)}... 价格≈ $${price.toFixed(2)}`);
+  // 此处可加入：价格突破阈值则告警/触发套利逻辑
+});
+</code></pre>
+<div class="note"><b>机器人化思路：</b>把「打印价格」换成「与 Chainlink 价格比对，偏差超阈值则调用套利合约」即可演进为套利 bot。注意：监听在后端进程常驻，需处理断线重连与最新区块确认（等 1-2 个确认再行动，避免短重组导致误判）。</div>
+
+<h2 id="s12">12. 实战⑦：anvil fork 主网测试</h2>
+<p>直接用主网状态做本地测试，无需真金白银。anvil 的 <code>--fork-url</code> 把当前主网状态「快照」到本地，你还能用 <code>deal</code> 给测试账户造币。</p>
+<pre><code># 终端 A：用真实 RPC（Infura/Alchemy）fork 主网，监听本地 8545
+anvil --fork-url $MAINNET_RPC --fork-block-number 19000000
+
+# 终端 B：用 cast 在 fork 环境读真实 Pair 储备
+cast call 0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc \
+  "getReserves()(uint112,uint112,uint32)" --rpc-url http://127.0.0.1:8545
+
+# 给本机 0 号账户（默认有 1 万 ETH）额外造 100 万 USDC，方便测试
+cast rpc anvil_setBalance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 0x3635c9adc5dea00000
+</code></pre>
+<pre><code>// 12-fork-test.js
+// 在 fork 环境运行上文所有实战：把 provider 指向本地 anvil 即可
+import { ethers } from "ethers";
+import "dotenv/config";
+
+// fork 模式下，用 anvil 预置账户（私钥公开，仅测试）
+const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+const PK = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // anvil 0 号
+const wallet = new ethers.Wallet(PK, provider);
+
+console.log("fork 链 chainId:", (await provider.getNetwork()).chainId);
+console.log("余额:", ethers.formatEther(await provider.getBalance(wallet.address)), "ETH");
+
+// 此时可调用 08~11 的任意逻辑（Pair/Chainlink/Aave 都是真实主网地址），
+// 只是交易由本地 anvil 打包，免费且可反复重置。
+// 例如：先用 cast 给 wallet 发 USDC，再跑 09-swap.js 的兑换流程验证通过。
+</code></pre>
+<div class="tip"><b>fork 的价值：</b>主网合约不可在测试网重部署、且需真实代币。fork 让你在「完全真实的状态」上复现交互、调试、做攻击演练，却零成本、可随时 <code>Ctrl-C</code> 重置。所有本篇实战都应先在 fork 跑通，再考虑真实环境。</div>
+
+<h2 id="s13">13. 源码精读路线与生态链接表</h2>
+<h3>13.1 源码精读路线建议</h3>
+<ol>
+<li><b>Compound V2</b>：借贷鼻祖，代码量适中，先读 <code>Comptroller</code>（风控/清算）、<code>CToken</code>（计息/利率）、<code>PriceOracle</code>。理解「利息指数」与「清算激励」最经典。</li>
+<li><b>Uniswap V2</b>：读 <code>UniswapV2Pair.sol</code> 的 <code>swap</code>/<code>mint</code>/<code>burn</code> 与 <code>UniswapV2Library.getAmountOut</code>，把本篇数学对应到代码。</li>
+<li><b>Uniswap V3</b>：读 <code>UniswapV3Pool.sol</code> 的 tick/区间管理、<code>swap</code> 的循环逻辑（推荐 RareSkills Uniswap V3 Book 逐行讲解）。</li>
+</ol>
+
+<h3>13.2 Damn Vulnerable DeFi 闯关建议</h3>
+<p>Damn Vulnerable DeFi 是「边攻破边学」的实战库，每关模拟一个真实漏洞（重入、预言机操纵、闪电贷、访问控制等）。建议顺序：① 先看提示想攻击向量；② 用 Foundry 写 exploit 测试；③ 对照官方 solution 复盘。它把本篇所有原理串成「攻击者视角」，是成为安全工程师的最佳路径。</p>
+<pre><code># 克隆并安装
+git clone https://github.com/twonyon/damn-vulnerable-defi
+cd damn-vulnerable-defi &amp;&amp; npm install
+# 每关在 test/ 下写 exploit，forge test 通过即过关
+</code></pre>
+
+<h3>13.3 主流协议文档链接表</h3>
+<table>
+<tr><th>协议/主题</th><th>文档</th><th>重点</th></tr>
+<tr><td>Uniswap V2/V3</td><td>docs.uniswap.org</td><td>Pair/Router、集中流动性</td></tr>
+<tr><td>Uniswap V3 Book</td><td>rareskills.io/uniswap-v3-book</td><td>逐行数学讲解</td></tr>
+<tr><td>Aave V3</td><td>docs.aave.com</td><td>Pool、健康因子、清算</td></tr>
+<tr><td>Compound</td><td>compound.finance/docs</td><td>利率模型、CToken</td></tr>
+<tr><td>Chainlink</td><td>docs.chain.link</td><td>Data Feeds、VRF、Automation</td></tr>
+<tr><td>Lido</td><td>docs.lido.fi</td><td>stETH、 withdrawals</td></tr>
+<tr><td>EigenLayer</td><td>docs.eigenlayer.xyz</td><td>再质押、AVS</td></tr>
+<tr><td>1inch</td><td>docs.1inch.io</td><td>聚合路由 API</td></tr>
+<tr><td>Flashbots</td><td>docs.flashbots.net</td><td>MEV、私有交易保护</td></tr>
+<tr><td>Damn Vulnerable DeFi</td><td>github.com/twonyon/damn-vulnerable-defi</td><td>安全闯关</td></tr>
+</table>
+
+<h2 id="s14">14. 综合案例：循环贷与闪电贷原子套利</h2>
+<p>本节把前面零散的协议「拼」起来，体会可组合性的威力。两个案例都在一笔交易/一次操作中完成，体现 DeFi 的原子性优势。</p>
+
+<h3>14.1 循环贷（Leveraged Staking / Looping）</h3>
+<p>目标：用 1 份 ETH 撬出「多份 stETH 敞口」。流程：抵押 ETH 借出稳定币 → 用稳定币买更多 ETH → 再抵押 → 再借……反复若干轮，放大本金的质押收益。风险是每次借贷都压低健康因子，行情下跌易连环清算。</p>
+<pre><code>// 14a-looping.js
+// 循环贷示意：抵押 WETH → 借 USDC → 换成 WETH → 再抵押（重复 N 轮）
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545"); // fork 环境
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+
+const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+const UNISWAP_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+
+const pool = new ethers.Contract(AAVE_POOL, [
+  "function supply(address,uint256,address,uint16) external",
+  "function borrow(address,uint256,uint256,uint16,address) external",
+  "function getUserAccountData(address) view returns (uint256,uint256,uint256,uint256,uint256,uint256)",
+], wallet);
+const router = new ethers.Contract(UNISWAP_ROUTER, [
+  "function swapExactTokensForTokens(uint,uint,address[],address,uint) external returns (uint[])",
+], wallet);
+
+const LOOPS = 3; // 循环 3 轮
+let amountWeth = ethers.parseUnits("1", 18); // 起始 1 WETH
+
+for (let i = 0; i &lt; LOOPS; i++) {
+  // 1) 抵押当前 WETH
+  const weth = new ethers.Contract(WETH, ["function approve(address,uint256) external returns (bool)"], wallet);
+  await (await weth.approve(AAVE_POOL, amountWeth)).wait();
+  await (await pool.supply(WETH, amountWeth, wallet.address, 0)).wait();
+
+  // 2) 借出 60% 价值的 USDC（留缓冲，避免清算）
+  const data = await pool.getUserAccountData(wallet.address);
+  const borrowBase = (data.availableBorrowsBase * 60n) / 100n; // 以 USD 计
+  const usdcAmt = borrowBase * 10n ** 6n / 10n ** 8n;            // 转 6 位小数
+  await (await pool.borrow(USDC, usdcAmt, 2, 0, wallet.address)).wait();
+
+  // 3) 把 USDC 换成 WETH，进入下一轮
+  const usdc = new ethers.Contract(USDC, ["function approve(address,uint256) external returns (bool)"], wallet);
+  await (await usdc.approve(UNISWAP_ROUTER, usdcAmt)).wait();
+  const out = await router.swapExactTokensForTokens(
+    usdcAmt, 0, [USDC, WETH], wallet.address, Math.floor(Date.now()/1000)+1200, { maxFeePerGas: ethers.parseUnits("3","gwei") }
+  );
+  const rec = await out.wait();
+  // 下一轮本金 = 刚换回的 WETH（从事件/receipt 解析，此处简化为继续循环）
+  amountWeth = ethers.parseUnits("0.5", 18); // 演示用定值
+  console.log(`第 ${i+1} 轮完成，HF=`, ethers.formatUnits((await pool.getUserAccountData(wallet.address)).healthFactor, 18));
+}
+</code></pre>
+<div class="warn"><b>注意：</b>循环轮数越多，杠杆越高，清算阈值越近。熊市里价格下跌会让多层抵押同时触发清算，损失被杠杆放大。务必用 fork 反复压力测试不同跌幅下的 HF。</div>
+
+<h3>14.2 闪电贷原子套利（无本金套利）</h3>
+<p>利用闪电贷「零抵押借巨资」，在两个池间搬平价格差，赚差价后还本付息，全程一笔交易内完成。若算错/滑点吃光利润，整笔回滚，借款当没发生。</p>
+<pre><code>// 14b-flash-arb.js
+// 闪电贷套利骨架：借 USDC → 池 A 买便宜 WETH → 池 B 卖贵 WETH → 还 USDC
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+
+const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+const ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+
+const pool = new ethers.Contract(AAVE_POOL, [
+  "function flashLoanSimple(address receiver, address asset, uint256 amount, bytes calldata params, uint16 referralCode) external",
+], wallet);
+const router = new ethers.Contract(ROUTER, [
+  "function swapExactTokensForTokens(uint,uint,address[],address,uint) external returns (uint[])",
+], wallet);
+
+// 第一步：发起闪电贷
+const borrow = ethers.parseUnits("100000", 6); // 借 10 万 USDC
+await (await pool.flashLoanSimple(wallet.address, USDC, borrow, "0x", 0)).wait();
+console.log("闪电贷套利已发起（实际套利逻辑在回调合约中执行）");
+
+// 真实场景需部署一个 Receiver 合约，实现 executeOperation：
+//   - 用借来的 USDC 在池 A swap 成 WETH（amountOutMin 设好防夹）
+//   - 用 WETH 在池 B swap 回 USDC
+//   - 计算 finalUSDC，要求 finalUSDC &gt; borrow + fee（约 0.05%）
+//   - approve Pool 花 borrow+fee，return true；否则 revert
+// 详见 Aave 文档的 IFlashLoanSimpleReceiver 接口。
+</code></pre>
+<div class="tip"><b>为什么必须合约：</b>闪电贷的还款逻辑在<strong>回调</strong>里——Aave 把币转给你后调用你的 <code>executeOperation</code>，你必须在函数返回前把本金+费 approve 回 Pool。这段「借→用→还」必须在一个合约调用内完成，单纯 JS 钱包无法做到，因此要部署 Receiver 合约（可在 Remix/Foundry 写，逻辑同上）。</div>
+
+<h2 id="s15">15. DeFi 风险总结与安全自检表</h2>
+<p>DeFi 把传统金融数月的流程压缩进「无需许可、不可篡改」的代码，收益与风险同源。下表汇总高频风险与缓解。</p>
+<table>
+<tr><th>风险类别</th><th>成因</th><th>缓解手段</th></tr>
+<tr><td>智能合约漏洞</td><td>重入、整数溢出、权限缺失、逻辑错误</td><td>审计 + 形式化验证 + bug bounty + CEI 模式</td></tr>
+<tr><td>预言机操纵</td><td>用现货价/单源喂价</td><td>Chainlink/TWAP、心跳过期、偏差上限</td></tr>
+<tr><td>清算风险</td><td>抵押率不足、行情暴跌</td><td>留缓冲、监控 HF、设自动减仓</td></tr>
+<tr><td>脱锚风险</td><td>稳定币储备不实/算法失稳</td><td>分散稳定币、关注储备证明</td></tr>
+<tr><td>MEV 被夹</td><td>交易进公开 mempool</td><td>设 amountOutMin、用私有 RPC/Flashbots</td></tr>
+<tr><td>治理攻击</td><td>代币集中、提案闪电通过</td><td>时间锁、投票延迟、去中心化度审查</td></tr>
+<tr><td>桥风险</td><td>跨链桥合约/验证者被攻破</td><td>用成熟桥、分散资金、审计记录</td></tr>
+<tr><td>无限授权</td><td>approve max 后合约出事</td><td>按需授权、定期 revoke、用 permit</td></tr>
+</table>
+
+<h3>15.1 交互侧安全自检（用户/开发者）</h3>
+<ul>
+<li><b>授权前：</b>只给知名合约授权；额度用「精确值」而非 <code>type(uint256).max</code>；用 revoke.cash 定期清理。</li>
+<li><b>兑换前：</b>总是填 <code>amountOutMin</code>，且基于实时储备计算（留 0.3%~1% 滑点）；通过私有 RPC 发送避免被夹。</li>
+<li><b>借贷前：</b>确认 HF 远高于 1，预留至少 20%~30% 下跌空间；理解利率模式与清算阈值。</li>
+<li><b>存款前：</b>确认合约已验证源码、有审计报告、TVL 健康、无异常管理权限（owner 能否抽走资金）。</li>
+<li><b>升级前：</b>代理合约的 admin 是否多签/时间锁？避免「项目方一夜改逻辑卷款」。</li>
+</ul>
+
+<h3>15.2 协议侧安全自检（开发者）</h3>
+<ul>
+<li>所有外部转账走<strong>Checks-Effects-Interactions</strong> 或加 <code>nonReentrant</code>。</li>
+<li>权限用 <code>Ownable</code>/<code>AccessControl</code>，关键操作加时间锁（Timelock）。</li>
+<li>价格一律走抗操纵预言机，禁止「合约内价」或单一现货池。</li>
+<li>用 <code>require</code>/自定义 error 显式校验，整数运算优先 Solidity 0.8+ 自带溢出检查。</li>
+<li>上线前跑 <code>slither</code> + Foundry invariant/fuzz + 第三方审计 + bug bounty。</li>
+<li>重要资金走多签（如 Safe）与渐进式额度上限（先小后大）。</li>
+</ul>
+<div class="note"><b>总结：</b>本篇你已建立 DeFi 的完整心智模型——从 x*y=k 的数学到借贷清算、稳定币、预言机、闪电贷、MEV，并能用 ethers 真实调用 Uniswap/Aave/Chainlink，用 anvil fork 零成本演练。下一篇我们将进入 Solana 高性能公链开发，对比账户模型与 EVM 的根本差异。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 2.3 的公式，自己算一组「价格变为 2 倍」的无常损失，验证与文中方法一致。</li>
+<li>起 anvil fork 主网，运行 08-read-pair.js 读真实 WETH/USDC 储备，并用本地 getAmountOut 与链上一致。</li>
+<li>在 fork 里给测试账户发 USDC，跑通 09-swap.js，并故意把 amountOutMin 设成理论值的 2 倍，观察交易 revert（验证滑点保护）。</li>
+<li>用 11a 读 ETH/USD，并用 11b Multicall 一次读出 USDC/WETH/DAI 余额；用 11c 监听 Swap 推价格 5 分钟。</li>
+<li>挑 Damn Vulnerable DeFi 第一关（如 Fallout / Naive receiver），用 Foundry 写出 exploit 并 <code>forge test</code> 通过。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能从公式推导 x*y=k 的兑换输出，并算出无常损失数值</li>
+<li>能说清 Uniswap V2 的 Factory/Pair/Router 分工，及 V3 tick/集中流动性要点</li>
+<li>能解释借贷利率拐点模型、aToken/cToken 计息与健康因子清算</li>
+<li>能区分稳定币三范式，并用 UST 教训说明算法稳定币风险</li>
+<li>能说明 Chainlink 与 TWAP 差异、闪电贷原子性、MEV 三明治与 Flashbots 保护</li>
+<li>能用 ethers 读取 V2 储备、跑通 Router 兑换、Aave 存借还取、读预言机、Multicall、监听事件</li>
+<li>能起 anvil fork 主网，零成本复现上述所有交互</li>
+<li>能规划 Compound→Uniswap V2→V3 的源码精读与 DeFi 安全闯关路线</li>
+</ul></div>
+
+<div class="pager"><a href="05-solidity.html"><b>上一篇</b>← ETH 篇 II：Solidity 合约开发</a><a class="next" href="07-sol.html"><b>下一篇</b>Solana 篇：高性能公链开发 →</a></div>
+</main></body></html>

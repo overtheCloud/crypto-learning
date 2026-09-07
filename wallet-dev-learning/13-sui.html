@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUI 篇 I：概念与钱包开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html" class="cur">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">SUI 篇 I：概念与钱包开发</span><span class="chain chain-sui">SUI</span></header>
+<main class="doc">
+<h1>SUI 篇 I：概念与钱包开发</h1><p class="subtitle">读懂对象模型与 Move，并用 TypeScript 从零写出一个可用的 Sui 钱包交互层。主要参考：Sui 官方文档 docs.sui.io、Mysten Labs 技术博客。</p>
+<div class="goals"><b>本章目标：</b>
+<ul style="margin-top:8px">
+<li>理解 Sui 的「一切皆对象」模型与三类对象差异，以及它如何带来高并发与亚秒终局。</li>
+<li>掌握 Move 的资源线性类型哲学，能对照 Solidity 说出 Sui 资产安全的核心差异。</li>
+<li>理解 PTB（可编程交易块）的编排方式，以及它为何是 Sui 组合性的基础。</li>
+<li>用 @mysten/sui SDK 完成连接、生成密钥、查余额、查对象、SUI 转账的完整链路。</li>
+<li>了解 dapp-kit 前端集成、zkLogin、多签与赞助交易等钱包层能力。</li>
+</ul></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. Sui 是什么：定位与 Mysten Labs</a>
+<a href="#s2">2. 对象模型精讲</a>
+<a href="#s3">3. Move 语言哲学：资源即资产</a>
+<a href="#s4">4. Mysticeti 共识与亚秒终局</a>
+<a href="#s5">5. Gas 机制与存储费</a>
+<a href="#s6">6. 地址体系与签名方案</a>
+<a href="#s7">7. 赞助交易 Sponsored Transaction</a>
+<a href="#s8">8. Epoch 与验证者质押</a>
+<a href="#s9">9. PTB 可编程交易块</a>
+<a href="#s10">10. 钱包开发实战（TypeScript）</a>
+<a href="#s11">11. 读取并解析 Move 对象</a>
+<a href="#s12">12. BCS 序列化概念</a>
+<a href="#s13">13. 前端集成 @mysten/dapp-kit</a>
+<a href="#s14">14. Slush 与 Wallet Standard</a>
+<a href="#s15">15. zkLogin：无助记词登录</a>
+<a href="#s16">16. 多签 Multisig</a>
+<a href="#s17">17. 查询交易历史与链上事件</a>
+<a href="#s18">18. 调试技巧与常见错误</a>
+<a href="#s19">19. 综合：最小 CLI 钱包脚本</a>
+<a href="#s17">17. 查询交易历史与链上事件</a>
+<a href="#s18">18. 调试技巧与常见错误</a>
+<a href="#s19">19. 综合：最小 CLI 钱包脚本</a>
+</div>
+
+<h2 id="s1">1. Sui 是什么：定位与 Mysten Labs</h2>
+<p>Sui 是一条 Layer1 公链，由 <b>Mysten Labs</b> 团队开发。这个团队的背景非常关键：它的核心成员（包括首席执行官 Evan Cheng、首席科学家 Sam Blackshear）来自 Meta（原 Facebook）的 <b>Novi/Diem</b> 稳定币项目，正是他们在 Diem 项目中发明了 <b>Move 语言</b>。当 Diem 被关停后，团队带着 Move 与对「资产如何在链上安全表达」的深刻理解，创建了 Sui。</p>
+<p>因此 Sui 与 Aptos（另一支 Diem 出身团队）共享 Move 的基因，但设计取向完全不同：Aptos 更偏向「改进版 Diem 共识」，而 Sui 把赌注押在了 <b>对象模型（Object Model）</b> 上——把链上状态彻底拆成独立的对象，从而在多数交易上绕开全局共识、实现并行执行。</p>
+<div class="quote">一句话定位：Sui 是一条「以对象为最小状态单元、用并行执行换取高吞吐与低延迟」的 Move 公链，适合高频、可组合的资产交互场景（游戏、DeFi、社交）。</div>
+
+<h3>1.1 关键事实速览</h3>
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>原生代币</td><td>SUI（用于 gas、质押、治理），最小单位 <code>MIST</code>，1 SUI = 10⁹ MIST。</td></tr>
+<tr><td>智能合约语言</td><td>Move（Sui 版，带对象能力扩展），不是 EVM。</td></tr>
+<tr><td>共识算法</td><td>Mysticeti（基于 DAG 的拜占庭容错 BFT）。</td></tr>
+<tr><td>终局时间</td><td>独占对象走 FastPath，约 100~200 毫秒亚秒级终局。</td></tr>
+<tr><td>测试网水龙头</td><td><code>https://faucet.sui.io</code> 或 CLI 命令 <code>sui client faucet</code>。</td></tr>
+<tr><td>主网 RPC</td><td><code>https://fullnode.mainnet.sui.io:443</code>，测试网 <code>https://fullnode.testnet.sui.io:443</code>。</td></tr>
+</table>
+<div class="tip"><b>提示：</b>本篇所有代码默认连接 <b>testnet</b>，避免烧掉真实资产。请先到水龙头领取测试 SUI 再运行示例。</div>
+
+<h3>1.2 与 ETH / SOL 的速记对照</h3>
+<table>
+<tr><th>维度</th><th>Ethereum</th><th>Solana</th><th>Sui</th></tr>
+<tr><td>状态模型</td><td>账户 + 合约存储槽</td><td>账户（含程序/数据分离）</td><td><b>对象</b>（独立 ID/版本/digest）</td></tr>
+<tr><td>语言</td><td>Solidity</td><td>Rust（eBPF）</td><td>Move</td></tr>
+<tr><td>并发</td><td>串行 EVM</td><td>账户级并行（Sealevel）</td><td>对象级并行（FastPath）</td></tr>
+<tr><td>资产表达</td><td>ERC-20 数字映射</td><td>SPL Token 账户</td><td>Coin / 对象（原生资源类型）</td></tr>
+</table>
+
+<h2 id="s2">2. 对象模型精讲</h2>
+<p>Sui 的世界观可以浓缩为一句话：<b>「一切皆对象」（Everything is an Object）</b>。账户（地址）只是一个「可以拥有对象的身份」，链上真正被读写的不是账户余额映射，而是无数个独立对象。这与以太坊「一个大状态树 + 合约存储槽」的模型形成鲜明对比。</p>
+
+<h3>2.1 每个对象都有三段元数据</h3>
+<table>
+<tr><th>字段</th><th>含义</th><th>说明</th></tr>
+<tr><td>ID</td><td>唯一标识</td><td>32 字节（256 位）的全局唯一 ID，由创建时的哈希派生，永不重复。</td></tr>
+<tr><td>version</td><td>版本号</td><td>每次该对象被写入，版本号 +1。可用于判断对象是否被更新。</td></tr>
+<tr><td>digest</td><td>内容摘要</td><td>对象内容与元数据的哈希，用于校验对象完整性、缓存与引用。</td></tr>
+</table>
+<div class="note"><b>对照理解：</b>以太坊里「地址 A 有 5 个 USDC」是 ERC-20 合约里一个 mapping 项；Sui 里「A 有 5 个 SUI」是 A 名下挂着的若干个 <code>Coin&lt;SUI&gt;</code> 对象（每个对象自身记录余额）。资产是「对象」而不是「数字」。</div>
+
+<h3>2.2 三类对象：Owned / Shared / Immutable</h3>
+<p>对象按「谁能动它、能不能并发」分三类，这是理解 Sui 性能的关键：</p>
+<table>
+<tr><th>类型</th><th>定义</th><th>谁可以修改</th><th>交易路径</th><th>典型例子</th></tr>
+<tr><td>Owned（独占）</td><td>对象由某个地址独占拥有（对象里记录了 owner 地址）。</td><td>仅 owner 通过签名交易</td><td><b>FastPath</b>：跳过全节点共识，并行执行</td><td>用户的 Coin、NFT、私有计数器</td></tr>
+<tr><td>Shared（共享）</td><td>对象没有单一 owner，任何人可读可写。</td><td>任何地址（需交易引用它）</td><td><b>Consensus</b>：走 Mysticeti DAG 全共识</td><td>订单簿、共享计数器、DEX 池</td></tr>
+<tr><td>Immutable（不可变）</td><td>被冻结（freeze_object）后永远不可修改。</td><td>无人可改</td><td>只在引用时读取，不参与写冲突</td><td>发布后的合约代码、配置常量</td></tr>
+</table>
+<div class="warn"><b>性能含义：</b>独占对象之间「互不依赖」即可完全并行，互不排队；只有共享对象需要排序与共识，因此会成为吞吐瓶颈。设计合约时，应让高频路径尽量使用独占对象，把共享对象留作「全局协调点」（如撮合池）。</div>
+
+<h3>2.3 一个真实对象的 JSON 长什么样</h3>
+<p>用 <code>getObject</code> 读到的对象在 SDK 里大致是这样（已简化）：</p>
+<pre><code>{
+  "objectId": "0x9f1c...a3",
+  "version": "42",                       // 被写入 42 次
+  "digest": "AoQ2...",                   // 内容摘要
+  "type": "0x2::coin::Coin&lt;0x2::sui::SUI&gt;",  // 泛型类型，注意 &lt;&gt; 是 Sui 的 Coin&lt;T&gt;
+  "owner": { "AddressOwner": "0xabc...123" }, // 独占对象：归某地址
+  "content": {
+    "dataType": "moveObject",
+    "fields": {
+      "id": { "id": "0x9f1c...a3" },      // 对象必须有 id: UID 字段
+      "balance": "1500000000"             // 1.5 SUI（MIST）
+    }
+  }
+}
+// 共享对象 owner 则是 { "Shared": { "initial_shared_version": "7" } }
+// 不可变对象 owner 为 "Immutable"</code></pre>
+<div class="tip"><b>读对象诀窍：</b>判断对象类别直接看 <code>owner</code> 字段——<code>AddressOwner</code> = 独占，<code>Shared</code> = 共享，<code>Immutable</code> = 不可变。钱包 UI 常用它来分组展示。</div>
+
+<h3>2.4 FastPath 与 Consensus 路径示意</h3>
+<pre><code>// 独占对象交易：FastPath（无需全共识）
+// 交易只引用 owner 名下的 Coin 对象 → 节点本地校验签名后即可并行执行
+[Owner A 签名] --&gt; 引用 Coin_A1, Coin_A2 --&gt; 并行执行 --&gt; 亚秒终局
+
+// 共享对象交易：Consensus（走 DAG 共识）
+// 交易引用全局共享池 Pool_X → 必须先由共识排序，再执行
+[任意签名] --&gt; 引用共享 Pool_X --&gt; Mysticeti 排序 --&gt; 执行 --&gt; 终局</code></pre>
+
+<h2 id="s3">3. Move 语言哲学：资源即资产</h2>
+<p>Move 的名字来自「移动（move）」，核心哲学是 <b>资源（Resource）线性类型</b>：资产在语言层面就是「值」，它不能被复制、不能被悄悄丢弃，只能被「移动」到别处。</p>
+<table>
+<tr><th>概念</th><th>Solidity 中的麻烦</th><th>Move / Sui 的做法</th></tr>
+<tr><td>资产复制</td><td>ERC-20 只是一串数字，逻辑写错就能多发。</td><td>资产对象若 <code>has key</code> 且未授予 <code>copy</code>，编译器禁止复制。</td></tr>
+<tr><td>资产丢失</td><td><code>selfdestruct</code> 或写到错误地址可能导致永久丢失。</td><td>未授予 <code>drop</code> 能力的对象若「凭空消失」，编译报错。</td></tr>
+<tr><td>重入</td><td>合约调用外部合约时状态未更新易重入。</td><td>Move 无动态分派到任意合约、无重入；对象所有权明确。</td></tr>
+</table>
+<div class="quote">Move 的承诺：<b>「如果一个值存在，它一定在某个地方；你无法在编译期之外让它凭空产生或消失。」</b> 这让资产安全从「靠开发者小心」变成「靠编译器保证」。</div>
+<p>下一篇会展开 Move 语法；这里先记住四个<b>能力（Ability）</b>：<code>key</code>（可作为对象被全局索引）、<code>store</code>（可被存入其他结构/转移）、<code>copy</code>（可复制）、<code>drop</code>（可在作用域结束时被丢弃）。一个「真金白银」的资产对象通常只拥有 <code>key + store</code>，<b>绝不</b>该有 <code>copy</code> 和 <code>drop</code>。</p>
+
+<h2 id="s4">4. Mysticeti 共识与亚秒终局</h2>
+<p>Sui 的共识层叫 <b>Mysticeti</b>（名字源自一种深海鱼，寓意 DAG 结构）。它是一个基于 <b>有向无环图（DAG）</b> 的 BFT 共识：</p>
+<ul>
+<li>验证者把待排序的交易广播为 DAG 中的「顶点（vertex）」，彼此引用形成图结构。</li>
+<li>借助 DAG 内的因果引用，验证者可以在一轮通信内就确认一批交易的顺序，而非传统链式逐块确认。</li>
+<li>结果：<b>亚秒级（sub-second）终局</b>，即交易从提交到「不可逆」通常只需几百毫秒。</li>
+</ul>
+<div class="tip"><b>为什么重要：</b>UX 上，Sui 的转账/兑换确认比多数链更接近「即时」。做钱包时你可以把等待时间设得很短，不必像 BTC 那样等 6 个确认。</div>
+
+<h2 id="s5">5. Gas 机制与存储费</h2>
+<p>Sui 的 gas 由两部分组成，这是它区别于以太坊的<b>特色</b>：</p>
+<table>
+<tr><th>组成</th><th>含义</th><th>Sui 特色</th></tr>
+<tr><td>计算费（Computation）</td><td>执行交易逻辑消耗的 gas，类似 ETH。</td><td>按指令计费，可用存储返利抵扣一部分。</td></tr>
+<tr><td>存储费（Storage）</td><td>把对象写入链上存储的预付款。</td><td>存入「存储基金（Storage Fund）」。</td></tr>
+</table>
+<ul>
+<li><b>存储基金与 rebate：</b>用户支付存储费时，大部分进入存储基金并按 epoch 分配给验证者/质押者；当对象被<b>删除或回收</b>时，系统返还一部分存储费（rebate）给发起者。</li>
+<li><b>删除对象退存储费：</b>这意味着「清理链上状态」在 Sui 上可能是「省钱」的，鼓励开发者及时回收不再需要的对象（如提取后可销毁的临时对象）。</li>
+</ul>
+<div class="note"><b>钱包层含义：</b>Sui 上转账/交易 gas 不高，但首次创建对象（如发币、铸 NFT）会预付存储费。注意 <code>gasBudget</code> 要留出存储余量，否则会因预算不足失败。</div>
+
+<h2 id="s6">6. 地址体系与签名方案</h2>
+<ul>
+<li>地址为 <code>0x</code> 前缀的 <b>32 字节（256 位）</b>十六进制串，例如 <code>0x2a9f...e71c</code>。</li>
+<li>地址通常由公钥经 <b>blake2b</b> 哈希派生（取低 256 位）。</li>
+<li>Sui 原生支持<b>多签名方案（flag）</b>：<code>ed25519</code>、<code>secp256k1</code>（与 BTC/ETH 同）、<code>secp256r1</code>（WebAuthn/Passkey 用的曲线，利于手机原生登录）。</li>
+</ul>
+<pre><code>// 签名方案 flag（一个字节，用于标识地址来自哪种曲线）
+// 0x00 = Ed25519
+// 0x01 = Secp256k1
+// 0x02 = Secp256r1 (WebAuthn / Passkey)
+
+// 助记词派生的标准路径（BIP-44 风格，SLIP-44 中 Sui 的 coin_type = 784）
+// m/44'/784'/0'/0'/0'
+
+// 由公钥推导地址（伪代码，SDK 内部已封装）
+address = "0x" + blake2b(pubkey_bytes, 256 位)[低 32 字节]</code></pre>
+<div class="tip"><b>提示：</b>ed25519 是 Sui CLI 与 @mysten/sui 默认方案；secp256r1 是 zkLogin/Passkey 的基础。多方案并存让钱包能同时兼容传统加密钱包与 Web2 登录。</div>
+
+<h2 id="s7">7. 赞助交易 Sponsored Transaction</h2>
+<p><b>赞助交易（Sponsored Transaction）</b>：让用户发起交易，但由<b>第三方（赞助者）支付 gas</b>。典型场景：</p>
+<ul>
+<li>新用户没有 SUI 也能用 dApp（免 gas 上手）。</li>
+<li>游戏/社交 dApp 替用户承担交互成本，提升留存。</li>
+<li>商户补贴用户操作。</li>
+</ul>
+<p>流程上分两段签名：</p>
+<pre><code>// 赞助交易的两段式流程（概念）
+// 第 1 步：用户用其私钥对「交易意图」签名（不含 gas 代付）
+// 第 2 步：赞助者用其私钥签名，声明「我愿意为这笔交易付 gas」
+// 然后把两个签名一起提交给全节点执行
+
+用户(sender) --签名--&gt; 交易块(PTB) --&gt; 赞助者(sponsor) --垫付 gas 签名--&gt; 全节点执行
+// 结果：对象变更归属于用户，gas 从赞助者账户扣除</code></pre>
+<div class="warn"><b>安全注意：</b>赞助者应当只在「自己构造并校验过的交易」上代付，避免被构造恶意高额 gas 的交易消耗资金。第 15 篇会给出赞助交易代码框架。</div>
+
+<h2 id="s8">8. Epoch 与验证者质押</h2>
+<ul>
+<li>Sui 把时间切成 <b>epoch（纪元，约 24 小时）</b>。每个 epoch 重新计算验证者集合与权重。</li>
+<li>SUI 持有者可把币<b>质押（stake）</b>给验证者，获得质押奖励（来自 gas 与存储基金分配）。</li>
+<li>质押时你会得到一个 <code>StakedSui</code> 对象（独占对象！），解押后需经过「解除期（epoch 边界）」才能取回本金+奖励。</li>
+</ul>
+<div class="tip"><b>钱包集成提示：</b>质押产出的 <code>StakedSui</code> 也是对象，会出现在 <code>getOwnedObjects</code> 结果里，UI 上要单独识别并展示。</div>
+
+<h2 id="s9">9. PTB 可编程交易块</h2>
+<p><b>PTB（Programmable Transaction Block，可编程交易块）</b>是 Sui 交易的「编排容器」。一个 PTB 可以包含多条命令，它们<b>原子执行</b>：要么全成功，要么全回滚。</p>
+<h3>9.1 常用命令</h3>
+<table>
+<tr><th>命令</th><th>作用</th></tr>
+<tr><td>SplitCoins</td><td>把一个 Coin 拆成若干指定面额的新 Coin（类似「找零」）。</td></tr>
+<tr><td>MergeCoins</td><td>把多个 Coin 合并成一个。</td></tr>
+<tr><td>TransferObjects</td><td>把若干对象转移给某地址。</td></tr>
+<tr><td>MoveCall</td><td>调用某个 Move 包里的某个函数（entry）。</td></tr>
+<tr><td>MakeMoveVec</td><td>把若干同类型对象/值打包成一个 vector，传给后续命令。</td></tr>
+</table>
+<h3>9.2 为什么 PTB 是组合性的核心</h3>
+<p>以太坊上「用 USDC 买代币」往往需要：先 <code>approve</code> 给路由合约，再发一笔 <code>swap</code> 交易——至少两笔、且 approve 有授权风险。Sui 上同样的事是一个 PTB 内完成：</p>
+<pre><code>// 一个 PTB 原子完成「拆 SUI → 调用 DEX swap → 把得到的币转给自己」
+const tx = new Transaction();
+const [coinOut] = tx.splitCoins(tx.gas, [amount]); // 拆出要花的 SUI
+tx.moveCall({
+  target: `${dexPackage}::router::swap`,
+  arguments: [coinOut, /* 其他参数 */],
+  typeArguments: ["0x2::sui::SUI", someTokenType],
+});
+// swap 内部直接把产出币转给 sender，无需先 approve
+await client.signAndExecuteTransaction({ transaction: tx, signer });</code></pre>
+<div class="quote">PTB 让「多步操作」变成「一笔原子交易」，没有中间态、没有授权残留、天然可组合。这是 Sui 上 DeFi/聚合器体验优于 EVM 的根本原因之一。</div>
+
+<h3>9.3 用 MakeMoveVec 打包数组参数</h3>
+<p>某些 Move 函数参数是 <code>vector&lt;object&gt;</code> 或 <code>vector&lt;u64&gt;</code>。这时用 <code>makeMoveVec</code> 把多个结果聚成数组，再传给 moveCall。</p>
+<pre><code>// 例：一次把 3 个 Coin 合并，并把「合并结果」传给某函数（vector&lt;Coin&gt; 参数）
+const tx = new Transaction();
+
+// 拆出 3 个不同面额的 Coin
+const [c1] = tx.splitCoins(tx.gas, [tx.pure.u64(1e9)]);
+const [c2] = tx.splitCoins(tx.gas, [tx.pure.u64(2e9)]);
+const [c3] = tx.splitCoins(tx.gas, [tx.pure.u64(3e9)]);
+
+// 把 3 个 Coin 对象打包成 vector&lt;Coin&gt;（注意是对象引用，用 tx.object 思路）
+const vec = tx.makeMoveVec({ elements: [c1, c2, c3] });
+
+// 把 vector 传给某 Move 函数（假设它接收 vector&lt;Coin&lt;SUI&gt;&gt;）
+tx.moveCall({
+  target: `${pkg}::vault::deposit_many`,
+  arguments: [vec],
+  typeArguments: ["0x2::sui::SUI"],
+});
+// 整个动作仍是一笔 PTB，原子执行</code></pre>
+<div class="tip"><b>记忆点：</b>SplitCoins/MergeCoins 管「币的拆合」，MakeMoveVec 管「数组打包」，TransferObjects 管「所有权转移」，MoveCall 管「逻辑调用」——四个命令组合几乎能覆盖 90% 的 Sui 交互。</div>
+
+<h2 id="s10">10. 钱包开发实战（TypeScript）</h2>
+<p>下面进入实战。我们用官方 <code>@mysten/sui</code> SDK（V1+）从头搭一个钱包交互层。先在项目里安装：</p>
+<pre><code>npm install @mysten/sui @mysten/bcs</code></pre>
+<div class="tip"><b>版本提示：</b>本篇代码基于 <code>@mysten/sui</code> 的 V1 API（<code>SuiClient</code>、<code>Transaction</code>）。若你装到 V0.x，方法名略有差异，请对照官方迁移指南。</div>
+
+<h3>10.1 连接 SuiClient（testnet）</h3>
+<pre><code>import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+
+// 连接测试网全节点；也可传 "mainnet" / "devnet" / "localnet"
+const client = new SuiClient({ url: getFullnodeUrl("testnet") });
+
+// 探活：读取当前 epoch 与参考 gas 价格
+const checkpoint = await client.getLatestCheckpointSequenceNumber();
+console.log("最新 checkpoint 序号:", checkpoint);
+const price = await client.getReferenceGasPrice();
+console.log("参考 gas 价格:", price);</code></pre>
+
+<h3>10.2 生成密钥对与助记词导入导出</h3>
+<pre><code>import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { generateMnemonic, mnemonicToSeedSync } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english";
+
+// 1) 全新生成一个 ed25519 密钥对
+const keypair = new Ed25519Keypair();
+console.log("地址:", keypair.getPublicKey().toSuiAddress());
+console.log("私钥(仅演示，切勿泄露):", keypair.getSecretKey());
+
+// 2) 导出助记词（12 个英文单词），用于钱包「备份」
+const mnemonic = generateMnemonic(wordlist);
+console.log("助记词:", mnemonic);
+
+// 3) 从助记词按标准路径 m/44'/784'/0'/0'/0' 派生密钥
+//    derivePath 在 SDK 内部使用 @mysten/sui 的 fromSeed
+import { Ed25519Keypair as KP } from "@mysten/sui/keypairs/ed25519";
+const seed = mnemonicToSeedSync(mnemonic, ""); // 第二个参数为可选 passphrase
+const derived = KP.fromSeed(seed.slice(0, 32)); // 取前 32 字节作为 ed25519 种子
+console.log("派生地址:", derived.getPublicKey().toSuiAddress());</code></pre>
+<div class="warn"><b>安全警告：</b>生产环境绝不要把助记词/私钥明文打印或存前端。真实钱包应使用受保护环境（浏览器 Extension 的 isolated world、或系统密钥库）。本文仅为教学演示。</div>
+
+<h3>10.3 查询余额 getBalance</h3>
+<pre><code>// 查询某地址的 SUI 余额（coinType 缺省即 SUI）
+const balance = await client.getBalance({
+  owner: "0x你的地址",
+  // coinType: "0x2::sui::SUI"  // 不填默认 SUI
+});
+console.log("总量(单位 MIST):", balance.totalBalance);
+console.log("1 SUI =", 1_000_000_000, "MIST");
+
+// 查询某地址持有的所有币种（每种一行）
+const all = await client.getAllBalances({ owner: "0x你的地址" });
+for (const b of all) {
+  console.log(b.coinType, "=&gt;", b.totalBalance);
+}</code></pre>
+
+<h3>10.4 查询对象 getOwnedObjects（含分页）</h3>
+<pre><code>// Sui 对象可能很多，必须分页读取；cursor 为上一页末的游标
+async function listAllObjects(owner: string) {
+  let cursor: string | null | undefined = null;
+  const all = [];
+  do {
+    const page = await client.getOwnedObjects({
+      owner,
+      filter: { MatchAll: [] },   // 不过滤；也可按 StructType 过滤
+      options: { showType: true, showContent: true, showDisplay: true },
+      limit: 50,                  // 每页最多 50
+      cursor,
+    });
+    all.push(...page.data);
+    cursor = page.hasNextPage ? page.nextCursor : null;
+  } while (cursor);
+  return all;
+}
+
+const objs = await listAllObjects("0x你的地址");
+console.log("该地址名下对象数:", objs.length);
+for (const o of objs.slice(0, 5)) {
+  console.log(o.data?.objectId, o.data?.type);
+}</code></pre>
+
+<h3>10.5 SUI 转账（完整 PTB：splitCoins + transferObjects）</h3>
+<pre><code>import { Transaction } from "@mysten/sui/transactions";
+
+// 给目标地址转 0.5 SUI
+async function transferSui(sender: Ed25519Keypair, to: string, amountSui: number) {
+  const tx = new Transaction();
+
+  // 拆币：从 gas 对象里拆出 amountSui 个 SUI（单位 MIST）
+  const [coin] = tx.splitCoins(
+    tx.gas,                       // 来源：本交易的 gas 对象
+    [tx.pure.u64(amountSui * 1_000_000_000)]
+  );
+
+  // 转对象：把拆出的 coin 转给 to
+  tx.transferObjects([coin], tx.pure.address(to));
+
+  // 签名并执行
+  const result = await client.signAndExecuteTransaction({
+    transaction: tx,
+    signer: sender,
+    options: { showEffects: true, showObjectChanges: true },
+  });
+
+  // 等待终局（Sui 终局极快，这里用 waitForTransaction 更稳妥）
+  const digested = await client.waitForTransaction({
+    digest: result.digest,
+    options: { showEffects: true },
+  });
+  console.log("转账 digest:", digested.digest);
+  console.log("状态:", digested.effects?.status.status); // "success"
+  return digested;
+}</code></pre>
+<div class="note"><b>细节：</b><code>tx.gas</code> 表示「用本交易自身的 gas 对象作为拆币来源」，等价于把 gas 余钱当成一个大 Coin 来切。转账后剩余会作为找零自动并回 sender 的 gas 对象。</div>
+
+<h3>10.6 dryRun 与 devInspect（执行前模拟）</h3>
+<pre><code>// dryRun：用当前链上状态「试运行」，不真正上链，用于预估 gas 与验证能否成功
+const dryRun = await client.dryRunTransaction({
+  transaction: tx,
+});
+console.log("预估 gas:", dryRun.effects?.gasUsed);
+
+// devInspect：以「指定调用者」身份本地检视某 Move 调用的返回与事件（适合读函数）
+const inspected = await client.devInspectTransactionBlock({
+  sender: sender.getPublicKey().toSuiAddress(),
+  transactionBlock: tx,
+});
+console.log("模拟结果:", inspected.results);</code></pre>
+<div class="tip"><b>最佳实践：</b>钱包在真正签名前，先用 dryRun 检查 gas 预算与是否会出现 <code>failure</code>，可大幅减少用户「签了却失败」的挫败。</div>
+
+<h3>10.7 调用链上 Move 函数（MoveCall）</h3>
+<pre><code>// 以「调用一个发币包的 mint 函数」为例
+function buildMintTx(packageId: string, treasuryCapId: string, to: string, amount: number) {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${packageId}::my_coin::mint`, // 格式：包::模块::函数
+    arguments: [
+      tx.object(treasuryCapId),            // TreasuryCap 对象（权限）
+      tx.pure.u64(amount),                 // 数量
+      tx.pure.address(to),                 // 接收者
+    ],
+    // 若该模块是泛型，需要 typeArguments；本例无泛型
+  });
+  return tx;
+}</code></pre>
+
+<h2 id="s11">11. 读取并解析 Move 对象</h2>
+<p>链上对象通常以 BCS 编码存储，SDK 会自动解析成 JSON 友好的结构。我们通过 <code>getObject</code> 读取并访问其字段。</p>
+<pre><code>// 读一个对象的完整内容
+const obj = await client.getObject({
+  id: "0x对象ID",
+  options: { showContent: true, showType: true, showDisplay: true },
+});
+
+const content = obj.data?.content;
+if (content && content.dataType === "moveObject") {
+  // fields 里就是 Move 结构体的字段
+  const fields = content.fields as Record&lt;string, any&gt;;
+  console.log("对象类型:", content.type);
+  console.log("字段:", fields);
+  // 例如 Counter 对象：fields = { id: {...}, value: "42" }
+  const value = Number(fields.value);
+  console.log("当前计数:", value);
+}
+
+// 读 Display（合约作者可在链上配置的展示元数据，如 NFT 名字/图片）
+const display = obj.data?.display?.data;
+console.log("展示名:", display?.name, "图片:", display?.image_url);</code></pre>
+<div class="tip"><b>提示：</b><code>showDisplay</code> 依赖合约是否实现了 <code>sui::display</code> 标准；没有时返回空，UI 需有兜底展示逻辑。</div>
+
+<h2 id="s12">12. BCS 序列化概念</h2>
+<p><b>BCS（Binary Canonical Serialization）</b>是 Sui/Move 使用的二进制序列化格式，特点是「确定性」——同样的数据永远序列化成完全相同的字节，便于哈希与共识。常见用途：</p>
+<ul>
+<li>链上对象存储的底层编码。</li>
+<li>把交易参数（u64、address、vector 等）编码成字节传给 MoveCall。</li>
+<li>跨语言（Rust / TS / Python）一致地读写链上数据。</li>
+</ul>
+<pre><code>import { bcs } from "@mysten/bcs";
+
+// 用 bcs 手动编码一个 u64 数量（SDK 的 tx.pure.u64 内部即封装了它）
+const encoded = bcs.u64().serialize(1_000_000_000).toBytes();
+console.log("编码后字节:", encoded);
+
+// 解码回数字
+const decoded = bcs.u64().parse(Uint8Array.from(encoded));
+console.log("解码:", decoded.toString());</code></pre>
+<div class="note"><b>记住：</b>日常开发几乎不需要手写 BCS，SDK 的 <code>tx.pure.*</code> 与 <code>tx.object(...)</code> 已自动处理。但理解 BCS 有助于排查「参数类型不匹配」类错误。</div>
+
+<h2 id="s13">13. 前端集成 @mysten/dapp-kit</h2>
+<p>要在 React 前端让用户用浏览器钱包（如 Slush）连链并签名，官方提供 <code>@mysten/dapp-kit</code>。下面是最精简完整示例。</p>
+<pre><code>import { createNetworkConfig } from "@mysten/dapp-kit";
+import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { SuiClientProvider, WalletProvider, ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import "@mysten/dapp-kit/dist/index.css"; // 注意：dapp-kit 自带少量样式
+
+// 1) 配置网络（这里只暴露 testnet，也可加 mainnet）
+const { networkConfig } = createNetworkConfig({
+  testnet: { url: getFullnodeUrl("testnet") },
+});
+const queryClient = new QueryClient();
+
+function App() {
+  return (
+    &lt;QueryClientProvider client={queryClient}&gt;
+      &lt;SuiClientProvider networks={networkConfig} defaultNetwork="testnet"&gt;
+        &lt;WalletProvider&gt;
+          &lt;Page /&gt;
+        &lt;/WalletProvider&gt;
+      &lt;/SuiClientProvider&gt;
+    &lt;/QueryClientProvider&gt;
+  );
+}
+
+// 2) 业务页面：连接按钮 + 当前账户 + 调用链上函数
+function Page() {
+  const account = useCurrentAccount();          // 当前连接的账户（未连为 null）
+
+  // 3) 调用链上函数：useSignAndExecuteTransaction 负责弹钱包签名
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+
+  function callSomeFunction() {
+    const tx = new (require("@mysten/sui/transactions").Transaction)();
+    tx.moveCall({
+      target: "0x包::模块::函数",
+      arguments: [ /* ... */ ],
+    });
+    // 把交易交给钱包签名并执行
+    signAndExecute({ transaction: tx }, {
+      onSuccess: (res) =&gt; console.log("成功 digest:", res.digest),
+      onError: (e) =&gt; console.error("失败:", e),
+    });
+  }
+
+  return (
+    &lt;div&gt;
+      &lt;ConnectButton /&gt;                       {/* 渲染「连接钱包」按钮 */}
+      {account ? (
+        &lt;div&gt;
+          &lt;p&gt;已连接: {account.address}&lt;/p&gt;
+          &lt;button onClick={callSomeFunction}&gt;调用合约&lt;/button&gt;
+        &lt;/div&gt;
+      ) : (
+        &lt;p&gt;请先连接钱包&lt;/p&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+<div class="tip"><b>调用链说明：</b><code>SuiClientProvider</code> 提供 RPC 客户端 → <code>WalletProvider</code> 接入 Wallet Standard 标准钱包 → <code>ConnectButton</code> 触发连接 → <code>useCurrentAccount</code> 读当前账户 → <code>useSignAndExecuteTransaction</code> 把交易交给钱包签名上链。整条链无需你自己管理私钥。</div>
+
+<h2 id="s14">14. Slush 与 Wallet Standard</h2>
+<ul>
+<li><b>Slush</b> 是 Mysten Labs 官方推出的 Sui 钱包（浏览器扩展 + 移动端），原生支持对象模型、zkLogin、赞助交易等特性。</li>
+<li><b>Wallet Standard</b> 是一套跨链钱包接口标准（类似 EVM 的 EIP-1193），dApp 通过它自动发现并连接已安装的兼容钱包，无需为每个钱包写适配代码。</li>
+<li>因为 dapp-kit 基于 Wallet Standard，只要用户装了 Slush（或其他兼容钱包），上面的 <code>ConnectButton</code> 就能直接列出并连接。</li>
+</ul>
+<div class="note"><b>开发建议：</b>优先用 Wallet Standard + dapp-kit，而不是自己实现「Slush 专属」连接逻辑，这样你的 dApp 未来也能连上新钱包。</div>
+
+<h2 id="s15">15. zkLogin：无助记词登录</h2>
+<p><b>zkLogin</b> 让用户可以「用 Google/Twitch 等 OAuth 账号登录即拥有 Sui 地址」，无需助记词。原理：</p>
+<ol>
+<li>用户用 OAuth 登录，拿到身份提供商（如 Google）签发的 <b>JWT</b>（里面含用户唯一标识，如 email/sub）。</li>
+<li>把 JWT 与一个用户自己保存的 <b>salt</b> 一起，通过零知识证明（zk）生成一个「证明」，证明「我知道某 JWT + 某 salt」，但<b>不暴露 JWT 内容</b>。</li>
+<li>链上用「JWT 的 issuer + audience + salt 的哈希」派生出地址。之后用户用 zkProof 授权交易即可。</li>
+</ol>
+<pre><code>// zkLogin 集成流程（高层，非逐行代码）
+// 1) 前端引导用户 OAuth 登录，拿到原始 JWT（仅在本地使用，不上链）
+// 2) 调用 zk  prover 服务/本地生成 proof（输入：JWT、salt、zkLogin 电路）
+// 3) 构造 ZkLoginSignature，随交易一起提交
+const tx = new Transaction();
+tx.setSender(zkLoginAddress);          // zkLogin 派生出的地址
+// 交易本身与普通交易一样，只是签名材料换成 zkProof
+await client.signAndExecuteTransaction({ transaction: tx, signature: zkLoginSignature });</code></pre>
+<table>
+<tr><th>维度</th><th>传统助记词钱包</th><th>zkLogin</th></tr>
+<tr><td>上手成本</td><td>需备份 12 词</td><td>直接用 OAuth 账号</td></tr>
+<tr><td>私钥保管</td><td>用户自管</td><td>由 salt + JWT 派生（用户需保管 salt）</td></tr>
+<tr><td>适用场景</td><td>原生的加密用户</td><td>Web2 用户、游戏、社交登录</td></tr>
+</table>
+<div class="warn"><b>注意：</b>salt 的保管至关重要——salt 丢失等同于「丢了私钥」。生产方案通常把 salt 存在用户云盘或托管服务，并配合密钥轮换策略。</div>
+
+<h2 id="s16">16. 多签 Multisig</h2>
+<p>Sui 原生支持<b>多签地址</b>：由 N 个公钥按阈值 M 组成（如 2-of-3）。发起交易时需要 M 个成员分别签名，再聚合成一个多签交易提交。</p>
+<pre><code>import { MultiSigPublicKey } from "@mysten/sui/multisig";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+
+// 三个成员公钥
+const k1 = new Ed25519Keypair();
+const k2 = new Ed25519Keypair();
+const k3 = new Ed25519Keypair();
+
+// 构造 2-of-3 多签地址（权重各 1，阈值 2）
+const multisig = MultiSigPublicKey.fromPublicKeys({
+  threshold: 2,
+  publicKeys: [
+    { publicKey: k1.getPublicKey(), weight: 1 },
+    { publicKey: k2.getPublicKey(), weight: 1 },
+    { publicKey: k3.getPublicKey(), weight: 1 },
+  ],
+});
+console.log("多签地址:", multisig.toSuiAddress());
+
+// 构造交易并让其中两个成员分别签名，再聚合
+const tx = new Transaction();
+/* ... 填充交易内容 ... */
+const sig1 = (await tx.sign({ client, signer: k1 })).signature;
+const sig2 = (await tx.sign({ client, signer: k2 })).signature;
+const multisigSig = multisig.serializeSignature([sig1, sig2]); // 聚合
+
+await client.executeTransactionBlock({
+  transactionBlock: tx,
+  signature: multisigSig,
+});</code></pre>
+<div class="tip"><b>用途：</b>金库（Treasury）、DAO 治理、团队共管资产。注意多签地址本身也是普通 Sui 地址，可以拥有任意对象。</div>
+
+<h2 id="s17">17. 查询交易历史与链上事件</h2>
+<p>钱包除了「发交易」，还要能「看历史」与「听事件」。Sui 提供基于 checkpoint 的历史查询与事件订阅。</p>
+
+<h3>17.1 查询某地址相关交易</h3>
+<pre><code>// 查询地址参与过的交易（按 digest 列表返回，可分页）
+const txns = await client.queryTransactionBlocks({
+  filter: { FromAddress: "0x你的地址" }, // 也可 FromAndToAddress / ChangedObject / InputObject
+  options: { showInput: true, showEffects: true },
+  limit: 20,
+  order: "descending", // 从新到旧
+});
+for (const t of txns.data) {
+  console.log("digest:", t.digest, "时间:", t.timestampMs);
+}
+
+// 查询某对象的变更历史（对象的版本演进）
+const objHistory = await client.queryTransactionBlocks({
+  filter: { ChangedObject: "0x对象ID" },
+  options: { showObjectChanges: true },
+  limit: 10,
+});</code></pre>
+
+<h3>17.2 监听合约事件（queryEvents）</h3>
+<p>合约通过 <code>sui::event::emit</code> 发出的事件，链下可用 <code>queryEvents</code> 轮询检索，非常适合「订单成交、转账到账」等通知。</p>
+<pre><code>// 按「包::模块::事件名」过滤事件；event 名是 Move 结构体的类型全名
+const events = await client.queryEvents({
+  query: {
+    MoveEventType: "0x包ID::counter::CounterIncremented", // 事件结构体全限定名
+  },
+  limit: 50,
+  order: "descending",
+});
+for (const e of events.data) {
+  console.log("交易:", e.transactionDigest, "解析后字段:", e.parsedJson);
+}
+
+// 轮询示例：每 3 秒查一次新事件（简易版；生产用 checkpoint 订阅更稳）
+async function pollEvents(lastCursor: string | null) {
+  const page = await client.queryEvents({
+    query: { MoveEventType: "0x包ID::counter::CounterIncremented" },
+    cursor: lastCursor,
+    limit: 50,
+  });
+  for (const e of page.data) console.log("新事件:", e.parsedJson);
+  return page.hasNextPage ? page.nextCursor : lastCursor;
+}
+setInterval(async () =&gt; { /* cursor = await pollEvents(cursor) */ }, 3000);</code></pre>
+<div class="tip"><b>生产建议：</b>高频监听请用基于 WebSocket 的「checkpoint 订阅」或自建索引器（如 Sui 的 indexed GraphQL），比定时轮询更省资源也更实时。</div>
+
+<h3>17.3 用 GraphQL RPC 精确取数</h3>
+<p>新版 Sui RPC 同时暴露 GraphQL 端点（<code>https://sui-testnet.mystenlabs.com/graphql</code>），一次查询可「连表」取交易、对象、事件，减少往返。</p>
+<pre><code>// 用 GraphQL 一次性取某地址最近交易及其 ObjectChange（伪代码示意）
+const query = `
+  query ($addr: SuiAddress!) {
+    address(address: $addr) {
+      transactions(last: 5) {
+        nodes {
+          digest
+          timestamp
+          effects { status { status } }
+        }
+      }
+    }
+  }
+`;
+const res = await fetch("https://sui-testnet.mystenlabs.com/graphql", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ query, variables: { addr: "0x你的地址" } }),
+});
+const data = await res.json();
+console.log(data.data.address.transactions.nodes);</code></pre>
+
+<h2 id="s18">18. 调试技巧与常见错误</h2>
+<table>
+<tr><th>现象</th><th>可能原因</th><th>排查</th></tr>
+<tr><td>交易失败：gas budget 不足</td><td>未留出存储费，或拆分面额过大</td><td>先 dryRun 看 <code>gasUsed</code>，把 <code>gasBudget</code> 调高 2~3 倍。</td></tr>
+<tr><td>moveCall 报错「function not found」</td><td>包未发布 / 模块名拼错 / 函数非 entry</td><td>核对 target 格式 <code>包::模块::函数</code>，确认函数有 <code>entry</code> 或 <code>public</code> 可见性。</td></tr>
+<tr><td>类型报错「type mismatch」</td><td>参数 BCS 类型与 Move 签名不符</td><td>用 <code>tx.pure.u64 / .address / .bool</code> 显式声明类型。</td></tr>
+<tr><td>共享对象交易明显更慢</td><td>走 Mysticeti 共识排序</td><td>属正常；高频路径改用独占对象或批处理。</td></tr>
+<tr><td>读对象 fields 为空</td><td>未加 <code>showContent: true</code></td><td>在 getObject/getOwnedObjects 的 options 里打开 content。</td></tr>
+</table>
+<div class="warn"><b>私钥永远别进前端：</b>本文为演示把 Ed25519Keypair 写在 Node 脚本里。真实钱包（Slush、dapp-kit）由扩展在隔离环境保管私钥，dApp 只拿到「签名请求」与「地址」。务必遵循这个边界。</div>
+
+<h2 id="s19">19. 综合：一个最小 CLI 钱包脚本</h2>
+<p>把前面知识点串起来，下面是一个可直接运行的 Node 脚本骨架：生成账户、领水（需你手动在浏览器完成领取，或用 faucet API）、查余额、转账。把代码存为 <code>wallet.ts</code> 用 <code>tsx wallet.ts</code> 运行。</p>
+<pre><code>import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { Transaction } from "@mysten/sui/transactions";
+
+const client = new SuiClient({ url: getFullnodeUrl("testnet") });
+
+async function main() {
+  // 1) 账户：这里复用已存在的私钥（演示）。生产请改为助记词派生或环境变量读取
+  const keypair = Ed25519Keypair.fromSecretKey("你的base64私钥");
+  const me = keypair.getPublicKey().toSuiAddress();
+  console.log("本钱包地址:", me);
+
+  // 2) 余额
+  const bal = await client.getBalance({ owner: me });
+  console.log("SUI 余额(MIST):", bal.totalBalance);
+
+  // 3) 转账 0.05 SUI 给目标（请替换为真实测试地址）
+  const to = "0x目标地址";
+  const tx = new Transaction();
+  const [coin] = tx.splitCoins(tx.gas, [tx.pure.u64(0.05 * 1e9)]);
+  tx.transferObjects([coin], tx.pure.address(to));
+
+  // 先 dryRun 估 gas
+  const dry = await client.dryRunTransaction({ transaction: tx });
+  console.log("预估 gasUsed:", dry.effects?.gasUsed);
+
+  // 再真正执行
+  const res = await client.signAndExecuteTransaction({
+    transaction: tx, signer: keypair, options: { showEffects: true },
+  });
+  await client.waitForTransaction({ digest: res.digest });
+  console.log("转账完成 digest:", res.digest);
+
+  // 4) 校验对方到账
+  const newBal = await client.getBalance({ owner: to });
+  console.log("对方 SUI 余额(MIST):", newBal.totalBalance);
+}
+
+main().catch((e) =&gt; { console.error(e); process.exit(1); });</code></pre>
+<div class="note"><b>关于领水：</b>SDK 暂无统一领水 API（水龙头依赖反机器人）。最稳妥是在浏览器打开 <code>https://faucet.sui.io</code> 输入地址领取；也可调用各社区 faucet 的 HTTP 接口（非官方保证可用）。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 <code>@mysten/sui</code> 连上 testnet，生成 ed25519 密钥并导出助记词，再到水龙头领水。</li>
+<li>用 <code>getBalance</code> 打印你的 SUI 余额，并写个分页函数列出名下前 100 个对象。</li>
+<li>写一个 <code>transferSui</code> 函数给另一个测试地址转 0.1 SUI，先用 dryRun 预估 gas，再真正执行，并用 <code>waitForTransaction</code> 确认成功。</li>
+<li>用 dapp-kit 搭一个最小 React 页面：连接 Slush、显示当前地址、显示余额。</li>
+<li>拓展：把交易改成「先 splitCoins 再 transferObjects 给 3 个不同地址」的单笔 PTB。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能解释「一切皆对象」，并说出 Owned/Shared/Immutable 三类对象的差异与性能含义。</li>
+<li>能说明 Move 资源线性类型相比 Solidity 在资产安全上的优势。</li>
+<li>能讲清 FastPath 与 Mysticeti 共识分别服务于哪类对象、终局时间量级。</li>
+<li>能说出 Sui gas 的「计算费 + 存储费 + 存储基金 rebate」机制，以及删除对象为何能退费。</li>
+<li>能写出用 @mysten/sui 连接、生成密钥、查余额、做 SUI 转账的完整 TS 代码。</li>
+<li>能说清 PTB 的 5 个常用命令，并用它对比 ETH「approve+swap」的两笔模式。</li>
+<li>知道 dapp-kit 的 SuiClientProvider/WalletProvider/ConnectButton 调用链。</li>
+<li>能概括 zkLogin「JWT+salt+zk 证明→地址」的原理与适用场景。</li>
+</ul></div>
+
+<div class="pager"><a href="12-tron-defi.html"><b>上一篇</b>← TRON 篇：DeFi 与生态实战</a><a class="next" href="14-sui-move.html"><b>下一篇</b>SUI 篇 II：Move 合约开发 →</a></div>
+</main></body></html>

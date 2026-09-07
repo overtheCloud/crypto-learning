@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>篇 00 · 公共基础：密码学、HD 钱包与交易签名</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html" class="cur">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar">
+  <a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">篇 00 · 公共基础</span>
+  <span class="chain chain-common">COMMON</span>
+</header>
+<main class="doc">
+
+<h1>篇 00 · 公共基础：密码学、HD 钱包与交易签名</h1>
+<p class="subtitle">五条链共用的地基。主要参考：《Mastering Bitcoin》第 3–5 章、《Mastering Ethereum》第 4–5 章、learnmeabitcoin.com、BIP32/39/44 原文</p>
+
+<div class="goals">
+  <b>本章目标：</b>
+  <ul style="margin:6px 0 0;">
+    <li>说清哈希、椭圆曲线、数字签名在区块链里各自解决什么问题</li>
+    <li>完整复现「助记词 → 种子 → 主密钥 → 各链地址」的推导链条</li>
+    <li>理解 UTXO / 账户 / 对象三种状态模型及各链签名防重放机制</li>
+    <li>掌握钱包安全基本盘：keystore、冷热分离、授权风险</li>
+    <li>完成统一实验：一个助记词派生 5 链地址</li>
+  </ul>
+</div>
+
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 哈希函数</a>
+<a href="#s2">2. 椭圆曲线与密钥对</a>
+<a href="#s3">3. 数字签名</a>
+<a href="#s4">4. HD 钱包：BIP39/32/44</a>
+<a href="#s5">5. 三种状态模型</a>
+<a href="#s6">6. 交易生命周期与防重放</a>
+<a href="#s7">7. 消息签名与身份认证</a>
+<a href="#s8">8. 钱包形态与安全</a>
+<a href="#s9">9. 节点接入与测试网</a>
+<a href="#s10">10. 统一实验：一词派五链</a>
+</div>
+
+<h2 id="s1">1. 哈希函数：区块链的「指纹机」</h2>
+<p>哈希函数把任意长度输入映射为固定长度输出，是区块链里使用频率最高的密码学原语。区块链用到的三个关键性质：</p>
+<ul>
+  <li><b>单向性</b>：知道输出反推不出输入。地址 = 公钥的哈希，即使地址公开也推不出公钥（更推不出私钥）。</li>
+  <li><b>抗碰撞</b>：找不到两个不同输入产生相同输出。交易哈希（txid）因此可以唯一标识一笔交易。</li>
+  <li><b>雪崩效应</b>：输入改 1 位，输出面目全非。区块头包含前一区块的哈希，篡改任何历史数据都会导致后面所有区块哈希失效——这就是「链式防篡改」的原理。</li>
+</ul>
+<table>
+  <tr><th>算法</th><th>输出</th><th>用途与所在链</th></tr>
+  <tr><td>SHA-256</td><td>256 bit</td><td>BTC：挖矿（双重 SHA-256）、txid、Merkle 树；TRON 地址校验</td></tr>
+  <tr><td>Keccak-256</td><td>256 bit</td><td>ETH/TRON：地址生成（公钥哈希取后 20 字节）、事件 topic、函数选择器</td></tr>
+  <tr><td>RIPEMD-160</td><td>160 bit</td><td>BTC：地址生成（SHA-256 后再 RIPEMD-160 压缩到 160 位）</td></tr>
+  <tr><td>Blake2b</td><td>256 bit</td><td>SUI：地址派生与对象 digest</td></tr>
+  <tr><td>HMAC-SHA512</td><td>512 bit</td><td>HD 钱包：种子生成与密钥派生（见第 4 节）</td></tr>
+</table>
+<div class="note"><b>常见误区：</b>哈希 ≠ 加密。加密可逆（有密钥能解密），哈希不可逆。「把密码哈希存起来」和「把密码加密存起来」是完全不同的安全模型。私钥永远不应该被「哈希后还能恢复」——它需要加密存储（见第 8 节 keystore）。</div>
+
+<h2 id="s2">2. 椭圆曲线与密钥对：私钥即一切</h2>
+<p>区块链账户体系建立在<b>非对称密码学</b>上：私钥签名、公钥验证。五条链用的曲线只有两种：</p>
+<div class="grid c2">
+  <div class="card">
+    <h4>secp256k1 —— BTC / ETH / TRON</h4>
+    <p>私钥：256 位随机数（约 2²⁵⁶ ≈ 10⁷⁷ 种可能，超过宇宙原子数）。</p>
+    <p>公钥 = 私钥 × 生成点 G（椭圆曲线点乘，单向不可逆）。压缩公钥 33 字节。</p>
+    <p>签名算法：ECDSA（BTC Taproot 起也支持 Schnorr）。</p>
+  </div>
+  <div class="card">
+    <h4>ed25519 —— SOL / SUI</h4>
+    <p>Edwards 曲线，签名算法 EdDSA：更快、确定性（无需随机数，避免 ECDSA 随机数泄漏事故）、公钥 32 字节。</p>
+    <p>特性：<b>地址 = 公钥本身</b>（SOL 直接 Base58 编码公钥），无需再哈希。</p>
+  </div>
+</div>
+<p><b>私钥的本质就是一个大随机数</b>。理解这一点能破除很多神秘感：所谓「创建钱包」就是生成一个密码学安全的随机数；所谓「导入私钥」就是把这个数告诉别人（的计算机）。不同链的区别只在于：用这个数推公钥的曲线不同、再把公钥编码成地址的方式不同。</p>
+<table>
+  <tr><th>链</th><th>曲线</th><th>地址 =</th><th>示例</th></tr>
+  <tr><td>BTC（P2PKH）</td><td>secp256k1</td><td>Base58Check(0x00 ‖ RIPEMD160(SHA256(公钥)))</td><td>1A1zP1…</td></tr>
+  <tr><td>BTC（P2WPKH）</td><td>secp256k1</td><td>Bech32(witness 程序)</td><td>bc1qw508…</td></tr>
+  <tr><td>ETH</td><td>secp256k1</td><td>0x ‖ Keccak256(公钥)[后 20 字节]</td><td>0xd8dA…6045</td></tr>
+  <tr><td>TRON</td><td>secp256k1</td><td>Base58Check(0x41 ‖ Keccak256(公钥)[后 20 字节])</td><td>TXLAQ6…</td></tr>
+  <tr><td>SOL</td><td>ed25519</td><td>Base58(公钥)</td><td>7EcDhS…</td></tr>
+  <tr><td>SUI</td><td>ed25519 等</td><td>0x ‖ Blake2b(flag ‖ 公钥)[32 字节]</td><td>0x7b8e…</td></tr>
+</table>
+<div class="tip"><b>推论（多链钱包的原理）：</b>ETH 与 TRON 曲线相同、公钥推导相同，只是地址编码加了不同前缀——所以同一私钥在两条链上控制「对应的」账户，MetaMask 类钱包靠这点一键支持所有 EVM 链。BTC 与 ETH 虽同用 secp256k1，但地址推导路径与编码不同，地址完全不同。</div>
+
+<h2 id="s3">3. 数字签名：证明「我是我」且「我同意」</h2>
+<p>签名的作用：用私钥对「交易数据」签名，任何人可用公钥验证——既证明你是私钥持有者（身份），又证明你认可这笔交易的具体内容（授权），且过程不泄露私钥。</p>
+<ul>
+  <li><b>ECDSA</b>（BTC/ETH/TRON）：签名 = (r, s)。以太坊额外加 v（recovery id），使得能从签名+消息反推出签名者地址（<code>ecrecover</code>）——合约里验证「链下签名」全靠它。</li>
+  <li><b>EdDSA</b>（SOL/SUI）：确定性签名，同样输入永远得到同样签名，无随机数生成器作恶空间。</li>
+  <li><b>Schnorr</b>（BTC Taproot）：支持密钥聚合——n 个人的公钥聚合成一个公钥，多签在链上看起来像单签，省空间、增隐私。</li>
+</ul>
+<div class="warn"><b>签名范围意识（钱包开发者最重要的安全直觉）：</b>用户签的是什么，就是授权了什么。签「转 100 U 给 Bob」安全；签一段看不懂的十六进制（盲签）可能等于交出全部资产。好的钱包必须把待签内容<b>人类可读地解析</b>出来。EIP-712（结构化签名）就是为了解决盲签问题而生（见第 7 节）。</div>
+
+<h2 id="s4">4. HD 钱包：BIP39 / BIP32 / BIP44 —— 一个助记词统治所有链</h2>
+<p>早期钱包每个地址一个独立随机私钥，备份是灾难。<b>分层确定性钱包（Hierarchical Deterministic, HD）</b>用一个种子确定性派生出整棵密钥树——备份一次助记词 = 备份过去未来所有地址。这是所有现代钱包（MetaMask、Phantom、TronLink、Slush、Ledger）的共同基础，三个 BIP 各司其职：</p>
+
+<h3>4.1 BIP39：助记词 ↔ 种子</h3>
+<ol>
+  <li>生成 128 位熵（12 词）或 256 位熵（24 词）；</li>
+  <li>取熵的 SHA-256 前几位作校验和，拼接后按 11 位分段；</li>
+  <li>每 11 位映射到 2048 词表中的一个词 → 助记词；</li>
+  <li>助记词 + 可选密码短语（passphrase）经 <b>PBKDF2-HMAC-SHA512（2048 轮）</b>拉伸为 512 位种子。</li>
+</ol>
+<div class="note"><b>密码短语（第 13/25 个词）的双刃剑：</b>同一个助记词 + 不同 passphrase = 完全不同的钱包。它能做「绑架防御」（交出一个只有小额资产的诱饵钱包），但 passphrase 丢了 = 资产永久丢失，且没有任何「找回」机制。</div>
+
+<h3>4.2 BIP32：种子 → 密钥树</h3>
+<p>种子经 HMAC-SHA512 拆成「主私钥 + 主链码」，之后每一层派生 = HMAC(父链码, 父密钥 ‖ 序号)。树中任意节点可继续派生子节点，形成 m/A/B/C/... 路径。两种派生方式：</p>
+<ul>
+  <li><b>强化派生（hardened，路径带 '</b>）：子密钥推导需要父<b>私</b>钥。父公钥泄露不会危及子私钥。</li>
+  <li><b>普通派生（normal）</b>：可用父<b>公</b>钥派生子公钥——「观察钱包 / 收银服务器只存 xpub 就能不断生成新收款地址」的原理。</li>
+</ul>
+<p>由此引出<b>扩展密钥</b>：<code>xprv</code>（扩展私钥，能派生一切）与 <code>xpub</code>（扩展公钥，只能派生地址）。收银系统、交易所热钱包只部署 xpub，私钥永不上服务器。</p>
+
+<h3>4.3 BIP44：多币种标准化路径</h3>
+<pre><code>m / purpose' / coin_type' / account' / change / address_index
+
+m/44'/60'/0'/0/0  → ETH 第 1 个账户的第 1 个地址
+m/44'/195'/0'/0/1 → TRON 第 1 个账户的第 2 个地址
+m/84'/0'/0'/0/0   → BTC 原生隔离见证（BIP84）第 1 个地址</code></pre>
+<table>
+  <tr><th>字段</th><th>含义</th><th>要点</th></tr>
+  <tr><td>purpose'</td><td>标准版本号</td><td>44'=传统；84'=BTC 原生 SegWit；86'=BTC Taproot</td></tr>
+  <tr><td>coin_type'</td><td>币种编号（SLIP-44 注册表）</td><td>0=BTC 60=ETH 195=TRON 501=SOL 784=SUI；测试网统一用 1</td></tr>
+  <tr><td>account'</td><td>账户隔离</td><td>钱包里「账户 1 / 账户 2」对应这层</td></tr>
+  <tr><td>change</td><td>0=外部收款 / 1=找零</td><td>BTC 钱包找零自动发回 change=1 链上，提升隐私</td></tr>
+  <tr><td>address_index</td><td>地址序号</td><td>普通派生（无 '），配合 xpub 可离线批量生成</td></tr>
+</table>
+<div class="note"><b>gap limit（空位限制）：</b>恢复钱包时，扫描地址用到第几个为止？约定：某 change 链上连续 20 个地址无交易即停止扫描。这就是为什么「只用助记词恢复后，早期地址余额都在，但如果你曾经一次性生成过 20+ 个空地址，更后面的地址需要手动增加扫描深度」。</div>
+
+<h2 id="s5">5. 三种状态模型：理解一切链差异的总钥匙</h2>
+<p>「我的币在哪」这个问题，三条技术路线给出三种答案。所有链上行为的差异（费用、并发、编程模型、钱包设计）都源于此。</p>
+<div class="grid c3">
+  <div class="card">
+    <h4>UTXO 模型（BTC）</h4>
+    <p>没有「账户余额」，只有一叠「未花费的支票」（UTXO）。余额 = 你名下所有 UTXO 之和；转账 = 撕掉几张旧支票、开出新支票（收款 + 找零）。</p>
+    <p><b>钱包影响：</b>要管理 UTXO 集、做币选（coin selection）、算找零；隐私好（每地址用一次）；无原生合约。</p>
+  </div>
+  <div class="card">
+    <h4>账户模型（ETH / TRON / SOL）</h4>
+    <p>全局状态表里每个账户一行：余额、nonce、（合约的）代码与存储。转账 = 改两行数字。</p>
+    <p><b>钱包影响：</b>要管 nonce 并发；合约编程直观；SOL 变体是「一切皆账户」+ 程序/数据分离。</p>
+  </div>
+  <div class="card">
+    <h4>对象模型（SUI）</h4>
+    <p>资产是一等公民「对象」，各有唯一 ID 和属主字段。转 NFT = 改对象的 owner。</p>
+    <p><b>钱包影响：</b>查资产 = 列出 owned objects；独占对象交易可并行，体验快；Gas 含存储费、删对象退费。</p>
+  </div>
+</div>
+<table>
+  <tr><th>对比维度</th><th>UTXO（BTC）</th><th>账户（ETH/TRON/SOL）</th><th>对象（SUI）</th></tr>
+  <tr><td>余额计算</td><td>扫描 UTXO 求和</td><td>直接读状态</td><td>聚合名下 Coin 对象</td></tr>
+  <tr><td>防重放</td><td>UTXO 只能花一次</td><td>nonce 递增</td><td>对象版本号（version）递增</td></tr>
+  <tr><td>并行性</td><td>天然并行（不同 UTXO 互不相关）</td><td>串行（共享全局状态）</td><td>独占对象并行，共享对象共识</td></tr>
+  <tr><td>合约能力</td><td>有限脚本</td><td>图灵完备</td><td>图灵完备（Move，资源安全）</td></tr>
+  <tr><td>费用单位</td><td>sat/vB（按字节）</td><td>gas（按计算步骤）/ Energy+Bandwidth（TRON）</td><td>计算费 + 存储费（可退）</td></tr>
+</table>
+
+<h2 id="s6">6. 交易生命周期与防重放：从签名到落账</h2>
+<p>不管哪条链，一笔交易的旅程都是：<b>构建 → 签名 → 广播 → 打包 → 确认/最终性</b>。钱包开发者要精确掌握每一步的失败模式：</p>
+<ol>
+  <li><b>构建</b>：收集输入（UTXO / nonce / gas 参数 / 对象引用）。错误常发生在这里：UTXO 已被花、nonce 冲突、gas 估低、对象版本过期。</li>
+  <li><b>签名</b>：本地完成，私钥不出设备。硬件钱包在此环节介入。</li>
+  <li><b>广播</b>：发给节点/RPC，进入 mempool（交易池）。可能因费率过低被拒收或长时间不打包。</li>
+  <li><b>打包</b>：矿工/验证者收入区块。ETH 上是秒级；BTC 平均 10 分钟。</li>
+  <li><b>确认与最终性</b>：BTC 惯例 6 确认（≈1 小时）对抗重组；ETH PoS 约 13 分钟 finalized；SOL 乐观确认秒级但 finalized 需 ~13 秒；TRON 约 19 秒固化；SUI 亚秒级终局。<b>业务上账前必须明确采用哪个确认级别</b>。</li>
+</ol>
+<div class="tip"><b>防重放机制对照（同一条签名不能被坏人重复提交）：</b>BTC 靠 UTXO 一次性；ETH/TRON 靠账户 nonce + 链 ID（EIP-155）；SOL 靠 recent blockhash 过期（~150 个区块）；SUI 靠对象版本号 + epoch。跨链场景还要防「跨链重放」——同签名在另一条兼容链上有效，所以签名里都嵌入了 chain/网络标识。</div>
+
+<h2 id="s7">7. 消息签名与身份认证：不止是转账</h2>
+<p>钱包的另一高频功能是「签消息不花 gas」，用于登录认证与链下授权：</p>
+<ul>
+  <li><b>personal_sign（EIP-191）</b>：签任意文本，前缀 <code>"\x19Ethereum Signed Message:\n"</code> 防止把签名误当交易。DApp 登录的经典方式。</li>
+  <li><b>EIP-712 结构化签名</b>：签一个带 domain 分隔符的 JSON 结构（字段名、类型清晰可见），钱包可格式化展示。Uniswap Permit、OpenSea 挂单都用它。<b>钱包开发必须支持解析展示</b>，否则用户又在盲签。</li>
+  <li><b>SIWE（EIP-4361，Sign-In with Ethereum）</b>：标准化的「用钱包登录」消息格式（域名、URI、nonce、过期时间），防钓鱼重放。</li>
+  <li><b>SOL / SUI</b>：钱包适配器 / dapp-kit 提供 signMessage；SUI 还有 <b>zkLogin</b>——用 Google/Apple 账号经零知识证明生成链上身份，完全无助记词（详见 SUI 篇）。</li>
+</ul>
+
+<h2 id="s8">8. 钱包形态与安全基本盘</h2>
+<table>
+  <tr><th>形态</th><th>私钥位置</th><th>代表</th><th>适用</th></tr>
+  <tr><td>热钱包（软件）</td><td>本地加密存储</td><td>MetaMask / Phantom / TronLink / Slush</td><td>日常小额、DApp 交互</td></tr>
+  <tr><td>硬件钱包</td><td>安全芯片，签名不出设备</td><td>Ledger / Trezor / Keystone</td><td>大额存储</td></tr>
+  <tr><td>多签钱包</td><td>分散在多人/多设备</td><td>Safe（ETH）、BTC 原生多签、TRON 账户权限</td><td>团队金库</td></tr>
+  <tr><td>MPC 钱包</td><td>密钥分片（从不完整出现）</td><td>Fireblocks / Zengo</td><td>机构托管</td></tr>
+  <tr><td>智能合约钱包（AA）</td><td>逻辑在合约（ERC-4337）</td><td>Safe、Argent</td><td>社交恢复、Gas 代付</td></tr>
+</table>
+<h3>8.1 keystore：私钥的加密存储</h3>
+<p>以太坊 keystore JSON 是教科书式方案：口令 → KDF（scrypt/argon2，慢速抗暴破）→ 派生加密密钥 → AES-128-CTR 加密私钥 → MAC 校验完整性。<b>各链自研钱包时直接复用这个结构</b>，不要发明自己的加密。</p>
+<h3>8.2 用户侧三大真实风险（钱包要在 UX 上防御）</h3>
+<ul>
+  <li><b>助记词钓鱼</b>：任何网站/客服索要助记词 = 诈骗。钱包永不在网页里要求输入助记词。</li>
+  <li><b>恶意 Approve</b>：ERC-20/TRC-20 的无限授权让合约随时转走你全部代币。钱包应显示授权额度、提供一键改小/撤销（revoke.cash 的原理）。</li>
+  <li><b>地址污染/相似地址诈骗</b>：攻击者生成首尾几位相同的地址，污染你的转账历史，诱导你复制错地址。防御：复制地址后核对中间段、使用地址簿白名单。</li>
+</ul>
+
+<h2 id="s9">9. 节点接入与测试网资源总表</h2>
+<p>开发不必自建节点，用 RPC 服务商；生产级应用建议关键链自建或至少多供应商容灾。</p>
+<table>
+  <tr><th>链</th><th>测试网</th><th>水龙头</th><th>浏览器</th><th>常用 RPC / 数据服务</th></tr>
+  <tr><td>BTC</td><td>testnet4</td><td>coinfaucet.eu</td><td>mempool.space</td><td>Esplora / mempool API、自建 bitcoin core</td></tr>
+  <tr><td>ETH</td><td>Sepolia</td><td>faucets.chain.link</td><td>sepolia.etherscan.io</td><td>Infura / Alchemy / QuickNode</td></tr>
+  <tr><td>SOL</td><td>Devnet</td><td>solana airdrop（CLI）</td><td>explorer.solana.com</td><td>Helius / QuickNode / Triton</td></tr>
+  <tr><td>TRON</td><td>Nile / Shasta</td><td>nileex.io</td><td>nile.tronscan.org</td><td>TronGrid</td></tr>
+  <tr><td>SUI</td><td>Testnet</td><td>官方 Discord / docs 水龙头</td><td>suiscan.com / suivision</td><td>官方全节点 JSON-RPC / GraphQL</td></tr>
+</table>
+
+<h2 id="s10">10. 统一实验：一个助记词派生五条链的地址</h2>
+<p>这是本章的毕业实验，把前面所有理论串成 60 行代码。运行环境：Node.js 18+，先在空目录 <code>npm init -y</code> 并安装依赖。</p>
+<pre><code><span class="cmt">// npm i bip39 @scure/bip32 @scure/btc-signer ethers
+// 文件：derive-all.mjs —— 运行：node derive-all.mjs</span>
+import * as bip39 from 'bip39';
+import { HDKey } from '@scure/bip32';
+import * as btc from '@scure/btc-signer';
+import { HDNodeWallet, Mnemonic, computeAddress } from 'ethers';
+
+<span class="cmt">// ---------- 1. 助记词 → 种子（BIP39） ----------</span>
+const mnemonic = bip39.generateMnemonic(128);   <span class="cmt">// 12 个词，测试专用，勿存真钱</span>
+const seed = await bip39.mnemonicToSeed(mnemonic);
+const hd = HDKey.fromMasterSeed(seed);          <span class="cmt">// BIP32 主密钥</span>
+console.log('助记词:', mnemonic);
+
+<span class="cmt">// ---------- 2. BTC（原生隔离见证 m/84'/0'/0'/0/0 → bc1q） ----------</span>
+const btcChild = hd.derive("m/84'/0'/0'/0/0");
+console.log('BTC :', btc.p2wpkh(btcChild.publicKey).address);
+
+<span class="cmt">// ---------- 3. ETH（m/44'/60'/0'/0/0 → 0x...） ----------</span>
+const ethChild = hd.derive("m/44'/60'/0'/0/0");
+console.log('ETH :', computeAddress('0x' + Buffer.from(ethChild.privateKey).toString('hex')));
+
+<span class="cmt">// ---------- 4. TRON（m/44'/195'/0'/0/0 → T...） ----------</span>
+<span class="cmt">// = ETH 公钥推导 + 0x41 前缀 + Base58Check，TRON 篇会展开完整实现</span>
+const tronChild = hd.derive("m/44'/195'/0'/0/0");
+console.log('TRON 私钥(见 10-tron.html 转地址):',
+  Buffer.from(tronChild.privateKey).toString('hex'));
+
+<span class="cmt">// ---------- 5. SOL（m/44'/501'/0'/0' → Base58 公钥） ----------</span>
+<span class="cmt">// ed25519 派生需 ed25519-hd-key 包；SOL 篇 07 给出完整代码</span>
+<span class="cmt">// ---------- 6. SUI（m/44'/784'/0'/0'/0'） ----------</span>
+<span class="cmt">// 同样 ed25519；SUI 篇 13 给出完整代码</span></code></pre>
+<div class="tip"><b>验证方法：</b>把同一个助记词粘贴进 <a href="https://github.com/iancoleman/bip39" target="_blank">Ian Coleman BIP39 工具</a>（下载 HTML 离线打开），逐链比对派生地址。完全一致 = 你已真正理解 HD 派生。SOL/SUI 两链的 ed25519 派生在对应篇章补全后回来再跑一次完整版。</div>
+
+<div class="exercise">
+  <b>动手练习</b>
+  <ol>
+    <li>手算验证：用任意在线 SHA-256 工具，对 "hello" 做两次哈希，观察雪崩效应（改一个字母重算）。</li>
+    <li>用 Ian Coleman 工具（离线模式）生成助记词，分别查看 BIP44（BTC）与 BIP44（ETH coin type 60）派生的前 3 个地址，记录 xpub 并解释它为什么「能派生地址却花不了钱」。</li>
+    <li>跑通第 10 节的统一实验代码，并用工具交叉验证至少 BTC、ETH 两链。</li>
+    <li>写一篇 300 字笔记：向一个完全不懂的朋友解释「为什么丢了助记词神仙也救不回来，而丢了手机没关系」。</li>
+    <li>查阅 SLIP-44 注册表（github.com/satoshilabs/slips），找出 DOGE、ATOM、APT 的 coin_type。</li>
+  </ol>
+</div>
+
+<div class="checklist">
+  <b>自检清单（全部能答「是」才进入 BTC 篇）</b>
+  <ul>
+    <li>能说出哈希、签名、加密三者的区别和各自在链上的用途</li>
+    <li>能写出 secp256k1 与 ed25519 各自被哪几条链使用、地址如何从公钥得到</li>
+    <li>能完整复述 BIP39 助记词 → 种子、BIP32 种子 → 密钥树、BIP44 路径五段含义</li>
+    <li>能解释 xpub 为什么可以安全地放在收银服务器上，以及 gap limit 是什么</li>
+    <li>能用一张表对比 UTXO / 账户 / 对象模型的余额、防重放、并行性</li>
+    <li>能说出五条链各自的确认/最终性惯例，以及业务上账该等哪个级别</li>
+    <li>能解释 EIP-712 解决什么问题、为什么「盲签」危险</li>
+    <li>能说出热/硬/多签/MPC/AA 五种钱包形态的差异与适用场景</li>
+    <li>统一实验跑通且与 Ian Coleman 工具结果一致</li>
+  </ul>
+</div>
+
+<div class="pager">
+  <a href="index.html"><b>上一篇</b>← 课程目录</a>
+  <a class="next" href="01-btc.html"><b>下一篇</b>篇 01 · BTC：概念与钱包开发 →</a>
+</div>
+
+</main>
+</body>
+</html>

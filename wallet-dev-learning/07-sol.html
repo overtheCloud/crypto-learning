@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOL 篇 I：概念与钱包开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html" class="cur">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">SOL 篇 I：概念与钱包开发</span><span class="chain chain-sol">SOL</span></header>
+<main class="doc">
+<h1>SOL 篇 I：概念与钱包开发</h1><p class="subtitle">从零理解 Solana 的高性能设计，并用 Node.js 在 devnet 上完整写出一个能转账、能发代币的钱包。主要参考：Solana 官方文档 solana.com/docs、Solana Cookbook solana.com/cookbook。</p>
+
+<div class="goals"><b>本章目标：</b>
+<ol style="margin-top:6px">
+<li>说清 Solana 为什么快：PoH + Tower BFT、400ms 出块与乐观确认；</li>
+<li>彻底理解账户模型（一切皆账户）与 rent-exempt 押金；</li>
+<li>掌握交易 / 指令 / PDA / CPI / SPL Token 的核心概念；</li>
+<li>用 @solana/web3.js 在 devnet 实现助记词派生、查询、转账、代币操作；</li>
+<li>用 wallet-adapter 把钱包接入 React 前端，并了解 web3.js v2 与 RPC 限速坑。</li>
+</ol></div>
+
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. Solana 是什么：为高频交易而生</a>
+<a href="#s2">2. 共识与性能：PoH + Tower BFT + 乐观确认</a>
+<a href="#s3">3. 账户模型精讲：一切皆账户</a>
+<a href="#s4">4. 交易结构与指令 Instruction</a>
+<a href="#s5">5. PDA 与 CPI：程序的"身份证"与"打电话"</a>
+<a href="#s6">6. SPL Token 体系与 ERC-20 对照</a>
+<a href="#s7">7. 地址、密钥与集群</a>
+<a href="#s8">8. 钱包开发实战：web3.js v1 基础</a>
+<a href="#s9">9. SPL Token 实战：发币与转账</a>
+<a href="#s10">10. 前端集成 wallet-adapter</a>
+<a href="#s11">11. web3.js v2、Playground 与脚手架</a>
+<a href="#s12">12. RPC 服务商与限速坑</a>
+<a href="#s13">13. 本地 CLI 与 devnet 工作流</a>
+<a href="#s14">14. 关闭账户与回收押金</a>
+<a href="#s15">15. approve / delegate 授权</a>
+<a href="#s16">16. 离线签名与冷钱包</a>
+<a href="#s17">17. 钱包余额面板实现</a>
+<a href="#s18">18. 常见错误排查</a>
+</div>
+
+<h2 id="s1">1. Solana 是什么：为高频交易而生</h2>
+<p>Solana 是一条权益证明（PoS）公链，核心卖点是<strong>高吞吐、低延迟、低费用</strong>。它在设计上把"可扩展性"当作第一优先级，目标是在普通硬件上也能达到数千 TPS，出块间隔约 400 毫秒。理解 Solana 的关键，是理解它如何用一系列工程手段把"全局时钟""并行执行""最小化冗余"做到极致。</p>
+
+<p>与以太坊（账户 + 合约存储世界状态、EVM 串行执行）不同，Solana 的核心设计哲学有几点：</p>
+<ul>
+<li><b>历史证明 PoH（Proof of History）</b>：在链上嵌入一个可验证的全局时间戳序列，让所有验证者无需相互通信就能就"事件发生的先后顺序"达成共识的时钟。</li>
+<li><b>并行执行</b>：通过账户的"读写锁（read/write lock）"声明，验证者可以并行处理互不冲突的交易，而不是像 EVM 那样全局串行。</li>
+<li><b>无全局状态存储于合约</b>：Solana 程序（合约）本身<strong>无状态</strong>，状态全部存在独立的"数据账户"里，从而天然支持程序升级与并行。</li>
+<li><b>租费模型 rent</b>：账户占用链上空间需质押少量 SOL 作为押金（rent-exempt），不活跃但缴足押金的账户不会被删除；这是与 EVM storage 收费完全不同的模型。</li>
+</ul>
+
+<div class="note"><b>注意</b>：Solana 快，但代价是硬件门槛更高、状态模型更复杂、编程范式与 EVM 差异巨大。作为钱包开发者，你首先要适应"一切皆账户""私钥地址是 ed25519 公钥的 Base58""没有原生 mapping 存储概念"这些新习惯。</div>
+
+<h2 id="s2">2. 共识与性能：PoH + Tower BFT + 乐观确认</h2>
+<h3>2.1 历史证明 PoH：可验证延迟函数做全局时钟</h3>
+<p>PoH 本质是一个<strong>可验证延迟函数（VDF）</strong>的连续哈希链：每个输出都作为下一个输入的一部分，形成一条"时间流逝"的密码学记录。验证者可以"快进"验证而不必逐步重算，因此 PoH 不是共识本身，而是<strong>为共识提供可信的全局时钟</strong>。</p>
+
+<p>有了这个时钟，验证者在投票时就不需要先对"时间戳"再达成一轮共识——时间顺序已经由 PoH 序列证明。这极大减少了通信开销。</p>
+
+<blockquote class="quote">一句话：PoH 让"先后顺序"本身可被密码学证明，Tower BFT 在这个时钟之上做 PBFT 风格的投票确认。</blockquote>
+
+<h3>2.2 Tower BFT：基于 PoH 的 PBFT 变体</h3>
+<p>Tower BFT 是 Solana 对实用拜占庭容错（PBFT）的改造版本。验证者用"投票"来确认一个 PoH 哈希（即一个 slot / 区块）。为了安全，投票会<strong>锁定（lockout）</strong>质押的 SOL：越深入历史、重复确认的次数越多，回滚所需的质押成本呈指数上升。恶意验证者若试图分叉，会损失大量质押。</p>
+
+<h3>2.3 400ms 出块与乐观确认</h3>
+<ul>
+<li><b>Slot</b>：约 400ms 一个 slot，每个 slot 由一位领导者（leader）负责出块。</li>
+<li><b>乐观确认（Optimistic Confirmation）</b>：当某个区块被足够多质押权重的验证者"确认（confirmed）"后，网络就乐观地认为它不会回滚，客户端即可视为成功——无需等待完全 finalized。</li>
+<li><b>confirmed vs finalized</b>：confirmed 是"绝大多数投票通过"，finalized 是"已被超级多数（supermajority）根定、极难回滚"。钱包应用通常先等 confirmed 提升体验，关键操作再等 finalized。</li>
+</ul>
+
+<div class="tip"><b>经验值</b>：转账类操作等 <code>confirmed</code> 通常 1~2 秒；涉及资金安全（如托管结算）建议等 <code>finalized</code>（约 12~32 个 slot，即十几秒）。</div>
+
+<h2 id="s3">3. 账户模型精讲：一切皆账户</h2>
+<p>Solana 里<strong>所有东西都是账户（Account）</strong>。一个账户由 Solana 运行时统一管理，但"它是什么"取决于它的 <code>owner</code> 程序。账户有 5 个核心字段：</p>
+<table>
+<tr><th>字段</th><th>含义</th><th>钱包开发关注点</th></tr>
+<tr><td>lamports</td><td>账户里有多少 lamport（1 SOL = 1e9 lamport）</td><td>余额查询、转账金额单位</td></tr>
+<tr><td>owner</td><td>拥有该账户的程序（Program ID）。只有 owner 程序能修改账户数据</td><td>判断代币账户归属、防止伪造</td></tr>
+<tr><td>data</td><td>账户存储的任意字节（程序状态）。程序账户此处为空</td><td>解析代币余额、自定义状态</td></tr>
+<tr><td>executable</td><td>是否为可执行程序账户</td><td>区分"程序"与"数据"</td></tr>
+<tr><td>pubkey</td><td>账户的 32 字节地址（ed25519 公钥 / PDA）</td><td>转账目标、ATA 推导</td></tr>
+</table>
+
+<h3>3.1 程序账户 vs 数据账户</h3>
+<ul>
+<li><b>程序账户（executable=true）</b>：存放已编译的 BPF 字节码。<strong>程序本身无状态</strong>，它不保存用户数据。</li>
+<li><b>数据账户</b>：由某个程序拥有，用来保存状态。例如一个 DeFi 池子的配置、一笔借贷头寸，都是独立的数据账户。数据账户的 owner 是管理它的程序。</li>
+</ul>
+
+<div class="note"><b>可升级性</b>：Solana 程序默认可以"升级"（用 <code>loader</code> 替换字节码），也可以设为不可变。这与以太坊不可变合约不同——但也意味着你要信任程序作者不会恶意升级。</div>
+
+<h3>3.2 rent 与 rent-exempt 押金</h3>
+<p>链上存储需要资源，因此每个账户要按占用空间支付"租金（rent）"。但 Solana 提供 <strong>rent-exempt（免租）</strong> 机制：只要账户里质押的 lamports 不低于"两年租金"的等价额，账户就<strong>永远不被回收</strong>。新创建账户（<code>init</code>）时，必须一次性转入足够的免租押金。</p>
+
+<table>
+<tr><th>空间</th><th>大约免租押金（历史值，随网络参数变动）</th></tr>
+<tr><td>165 字节（一个 ATA 代币账户）</td><td>约 0.00203928 SOL</td></tr>
+<tr><td>82 字节（一个 Mint 账户）</td><td>约 0.00141536 SOL</td></tr>
+</table>
+<div class="warn"><b>重要</b>：关闭账户（<code>close</code>）会把免租押金退给指定账户，这是 Solana 上"清理垃圾账户、退回 SOL"的常用手段。钱包显示"可用余额"时，要把这些被锁定的押金算清楚。</div>
+
+<h2 id="s4">4. 交易结构与指令 Instruction</h2>
+<h3>4.1 一笔交易（Transaction）的结构</h3>
+<p>交易本质上是一段被签名的、可序列化的字节。它包含：</p>
+<ul>
+<li><b>message</b>：核心部分，包含
+  <ul>
+    <li><code>instructions</code>：要执行的一条或多条指令；</li>
+    <li><code>recent_blockhash</code>：最近一个区块哈希，作为"新鲜度"凭证，过期（约 150 个 slot）则交易作废；</li>
+    <li><code>fee_payer</code>：支付手续费的账户（必须签名）；</li>
+    <li><code>account_metas</code>：本交易涉及的所有账户及其 meta（是否签名者、是否可写）。</li>
+  </ul>
+</li>
+<li><b>signatures</b>：对应签名者账户对 message 的 ed25519 签名列表。</li>
+</ul>
+
+<h3>4.2 指令 Instruction 的三要素</h3>
+<p>每条指令告诉运行时："调用哪个程序（program_id），用哪些账户（accounts），带什么参数（data）"：</p>
+<table>
+<tr><th>要素</th><th>说明</th></tr>
+<tr><td>program_id</td><td>目标程序的地址</td></tr>
+<tr><td>accounts</td><td>该指令要读写的账户列表，每个带 meta：<code>is_signer</code>（需签名）、<code>is_writable</code>（可写）</td></tr>
+<tr><td>data</td><td>指令的入参，通常是 Borsh/自定义序列化后的字节（如"调用 transfer 并转 100 个 token"）</td></tr>
+</table>
+
+<div class="note"><b>账户 meta 很关键</b>：运行时靠 <code>is_writable</code> 决定哪些交易可并行、靠 <code>is_signer</code> 决定谁有权限。钱包在构造交易时，必须正确声明每个账户的 meta，否则要么并行冲突、要么权限不足被拒。</div>
+
+<h3>4.3 compute budget 与优先费</h3>
+<p>每笔交易有一个 <strong>compute budget（计算预算）</strong>，限制其最多消耗的"计算单元（CU）"。当网络拥堵时，你可以附加一条 <code>ComputeBudgetProgram</code> 指令来：</p>
+<ul>
+<li><code>setComputeUnitLimit</code>：提高上限（复杂合约需要）；</li>
+<li><code>setComputeUnitPrice</code>：设置每 CU 的微 lamport 价格（= 优先费 / 小费），出价高者被 leader 优先打包。</li>
+</ul>
+
+<h2 id="s5">5. PDA 与 CPI：程序的"身份证"与"打电话"</h2>
+<h3>5.1 PDA（Program Derived Address，程序派生地址）</h3>
+<p>普通账户地址是 ed25519 公钥（在曲线上，有私钥）。<strong>PDA 是"不在 ed25519 曲线上"的地址</strong>，因此<strong>没有对应的私钥</strong>，外部无法用私钥签名它。</p>
+<p>PDA 由 <code>seeds</code>（种子，如 b"vault"、用户 pubkey）+ <code>program_id</code> 通过带 bump（偏移量 255→0 寻找）的哈希推导出来。因为无私钥，只有<strong>拥有它的程序</strong>在 CPI 中通过提供相同 seeds + bump 来"代签"。</p>
+
+<div class="tip"><b>PDA 的意义</b>：它让程序拥有"确定性、可预测"的"签名身份"，用来持有资金、做托管、做跨用户共享状态。类比：以太坊合约地址是创建者+nonce 决定的；Solana PDA 是 program+seeds 决定的，任何人都能算出同一个地址。</div>
+
+<h3>5.2 CPI（跨程序调用，Cross-Program Invocation）</h3>
+<p>程序 A 在执行中可以"调用"程序 B 的指令，这就是 CPI。被调用的程序 B 会把 A 传入的账户原样传递，并可选地"代签"由 A 的 PDA 拥有的账户。CPI 是 Solana 组合性的核心：钱包/前端只需触发顶层指令，底层 SPL Token、系统程序等由合约自动串联调用。</p>
+
+<h2 id="s6">6. SPL Token 体系与 ERC-20 对照</h2>
+<p>SPL Token 是 Solana 的代币标准（类似 ERC-20，但更"账户化"）。</p>
+<table>
+<tr><th>概念</th><th>SPL Token</th><th>以太坊 ERC-20</th></tr>
+<tr><td>代币定义</td><td>Mint 账户（保存总供应量、精度、mint 权限）</td><td>合约内 mapping 状态</td></tr>
+<tr><td>用户余额</td><td>每个用户一个 TokenAccount（ATA），独立账户</td><td>合约内 balances[user]</td></tr>
+<tr><td>转账</td><td>调用 Token Program，读写两个 TokenAccount</td><td>调用合约 transfer 函数</td></tr>
+<tr><td>授权/许可</td><td>Approve + Delegate（另设 delegate 账户）</td><td>approve/allowance</td></tr>
+<tr><td>关联的"钱包地址"</td><td>owner 的 system 账户 ≠ 其 ATA；ATA 由 owner+mint 推导</td><td>用户地址即余额持有人</td></tr>
+</table>
+
+<h3>6.1 Mint 与 TokenAccount / ATA</h3>
+<ul>
+<li><b>Mint</b>：一个代币的"定义账户"，其地址就是该代币的标识。字段含 <code>supply</code>、<code>decimals</code>、<code>mint_authority</code>。</li>
+<li><b>TokenAccount（代币账户）</b>：某 owner 对某 mint 的余额容器，保存 <code>mint</code>、<code>owner</code>、<code>amount</code>。</li>
+<li><b>ATA（Associated Token Account，关联代币账户）</b>：用 <code>owner 公钥 + mint 地址</code> 通过 PDA 推导出来的"标准" TokenAccount，保证每个用户对同一代币有唯一、可预测地址。钱包显示某代币余额，本质就是读该用户的 ATA。</li>
+</ul>
+
+<h2 id="s7">7. 地址、密钥与集群</h2>
+<h3>7.1 ed25519 与 Base58 地址</h3>
+<p>Solana 使用 <strong>ed25519</strong> 椭圆曲线。一个 Keypair 由私钥（32 字节）和公钥（32 字节）组成。<strong>钱包地址 = 公钥的 Base58 编码字符串</strong>（不含校验和前缀那种，普通地址就是裸 Base58）。</p>
+<ul>
+<li>私钥可以导出为 <code>Uint8Array(64)</code>（含公私钥），或编码为 Base58 字符串；</li>
+<li>常见助记词标准：BIP39 助记词 → 通过 <code>ed25519-hd-key</code> 按路径 <code>m/44'/501'/0'/0'</code> 派生出 ed25519 种子。</li>
+</ul>
+
+<h3>7.2 集群（Cluster）</h3>
+<table>
+<tr><th>集群</th><th>用途</th><th>RPC 示例</th></tr>
+<tr><td>mainnet-beta</td><td>主网，真实资产</td><td>https://api.mainnet-beta.solana.com（公共，限速）</td></tr>
+<tr><td>devnet</td><td>开发网，可免费领水</td><td>https://api.devnet.solana.com</td></tr>
+<tr><td>testnet</td><td>测试网，主要给验证者测试</td><td>https://api.testnet.solana.com</td></tr>
+<tr><td>localnet</td><td>本地 <code>solana-test-validator</code></td><td>http://127.0.0.1:8899</td></tr>
+</table>
+<div class="tip"><b>本篇实战用 devnet</b>：可以反复用 <code>requestAirdrop</code> 领测试 SOL，随便造币测试，不影响主网资产。</div>
+
+<h2 id="s8">8. 钱包开发实战：web3.js v1 基础</h2>
+<p>我们用 <strong>@solana/web3.js（v1）</strong> 在 Node.js 中完成钱包核心功能。先初始化项目：</p>
+<pre><code>// 初始化 npm 工程并安装依赖
+// npm init -y
+// npm install @solana/web3.js@1 @solana/spl-token bip39 ed25519-hd-key
+
+import { Connection, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction, PublicKey } from "@solana/web3.js";
+import { generateMnemonic, mnemonicToSeedSync } from "bip39";
+import { derivePath } from "ed25519-hd-key";
+import nacl from "tweetnacl"; // 一些环境下需要显式引入 ed25519 库
+
+// 1) 连接 devnet
+const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+
+console.log("已连接 devnet，区块高度:", await connection.getBlockHeight());
+</code></pre>
+
+<h3>8.1 生成密钥对 & 从助记词派生</h3>
+<p>Solana 地址派生路径为 <code>m/44'/501'/0'/0'</code>（BIP44，coin type 501 即 SOL）。</p>
+<pre><code>// 方式 A：直接生成一个全新随机钱包
+const keypairA = Keypair.generate();
+console.log("新地址:", keypairA.publicKey.toBase58());
+console.log("私钥(64字节数组):", Array.from(keypairA.secretKey));
+
+// 方式 B：从助记词派生标准 SOL 钱包（钱包开发的标准做法）
+const mnemonic = generateMnemonic(); // 12 个英文单词，必须安全保管
+console.log("助记词:", mnemonic);
+
+// 先把助记词转成 BIP39 seed（64 字节），再用路径派生 ed25519 种子
+const seed = mnemonicToSeedSync(mnemonic); // Buffer 64 字节
+const path = "m/44'/501'/0'/0'";          // SOL 标准派生路径
+const derived = derivePath(path, seed.toString("hex"));
+const keypairB = Keypair.fromSeed(derived.key); // 用 32 字节种子生成
+console.log("派生地址:", keypairB.publicKey.toBase58());
+
+// 方式 C：从已有私钥数组恢复
+const recovered = Keypair.fromSecretKey(keypairB.secretKey);
+console.log("恢复地址一致?", recovered.publicKey.equals(keypairB.publicKey));
+</code></pre>
+
+<div class="note"><b>私钥安全</b>：<code>secretKey</code> 是 64 字节（含私钥+公钥）。在真实钱包里，永远不要在控制台打印、不要明文存磁盘。浏览器端应走 wallet-adapter，由用户钱包扩展托管私钥。</div>
+
+<h3>8.2 领水、查余额、转账完整代码</h3>
+<pre><code>// 领测试 SOL（devnet 可用；主网无此接口）
+async function airdrop(address: string, amountSol: number) {
+  const sig = await connection.requestAirdrop(
+    new PublicKey(address),
+    amountSol * LAMPORTS_PER_SOL
+  );
+  // 等待交易确认，避免后续查询读到旧余额
+  await connection.confirmTransaction(sig, "confirmed");
+  return sig;
+}
+
+// 查询余额（返回 lamport 整数）
+async function getBalance(address: string) {
+  const lamports = await connection.getBalance(new PublicKey(address));
+  return lamports / LAMPORTS_PER_SOL; // 转成 SOL
+}
+
+// 完整转账（SOL）：构造交易 -&gt; 加指令 -&gt; 签名 -&gt; 发送 -&gt; 确认
+async function transferSol(from: Keypair, toAddress: string, amountSol: number) {
+  const tx = new Transaction();
+  tx.add(
+    SystemProgram.transfer({
+      fromPubkey: from.publicKey,    // 付款方（必须签名）
+      toPubkey: new PublicKey(toAddress),
+      lamports: amountSol * LAMPORTS_PER_SOL,
+    })
+  );
+
+  // 让运行时填入最新 blockhash 与 fee payer
+  const signature = await connection.sendTransaction(tx, [from]);
+  console.log("交易签名:", signature);
+
+  // 等待确认；confirmed 提升体验，finalized 更安全
+  const result = await connection.confirmTransaction(signature, "confirmed");
+  if (result.value.err) throw new Error("转账失败: " + JSON.stringify(result.value.err));
+  return signature;
+}
+
+// 跑一遍
+const me = Keypair.generate();
+await airdrop(me.publicKey.toBase58(), 1);          // 领 1 SOL
+console.log("余额:", await getBalance(me.publicKey.toBase58()));
+
+const friend = Keypair.generate();
+await transferSol(me, friend.publicKey.toBase58(), 0.1);
+console.log("friend 余额:", await getBalance(friend.publicKey.toBase58()));
+</code></pre>
+
+<div class="warn"><b>recent_blockhash 与重放</b>：<code>sendTransaction</code> 内部会自动帮你设好 <code>recentBlockhash</code> 和 <code>feePayer</code>。如果你手动构造 <code>Transaction</code>，记得 <code>tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash</code> 并且设置 <code>tx.feePayer</code>，否则会报 blockhash 找不到。</div>
+
+<h3>8.3 交易模拟 simulateTransaction</h3>
+<p>发送前可用 <code>simulateTransaction</code> 先"试跑"，它不消耗真实资产，却会返回错误与日志，非常适合调试。</p>
+<pre><code>const tx = new Transaction().add(
+  SystemProgram.transfer({
+    fromPubkey: me.publicKey,
+    toPubkey: friend.publicKey,
+    lamports: 1000,
+  })
+);
+const simulation = await connection.simulateTransaction(tx, [me]);
+console.log("模拟日志:", simulation.value.logs);
+if (simulation.value.err) console.error("模拟失败:", simulation.value.err);
+</code></pre>
+
+<h2 id="s9">9. SPL Token 实战：发币与转账</h2>
+<p>引入 <code>@solana/spl-token</code>。下面完整演示：创建 Mint → 为用户创建 ATA → 铸造 → 转账。</p>
+<pre><code>import {
+  createMint,           // 创建 Mint 账户
+  getOrCreateAssociatedTokenAccount, // 获取/创建 ATA
+  mintTo,               // 铸造代币
+  transfer,             // 转账代币
+  getAccount,           // 读取 TokenAccount 原始数据
+  getAssociatedTokenAddress, // 仅计算 ATA 地址（不创建）
+} from "@solana/spl-token";
+
+// 1) 创建 Mint：6 位精度，mint 权限与冻结权限都归 me
+const mint = await createMint(
+  connection,
+  me,                  // payer：支付免租押金（me 出 SOL）
+  me.publicKey,        // mintAuthority：谁可以增发
+  me.publicKey,        // freezeAuthority：谁可以冻结（可传 null）
+  6                    // decimals：6 位小数
+);
+console.log("Mint 地址:", mint.toBase58());
+
+// 2) 为 me 创建 ATA（关联代币账户），并把铸造的币打给它
+const myAta = await getOrCreateAssociatedTokenAccount(
+  connection, me, mint, me.publicKey
+);
+
+// 3) 铸造 1000 个代币（注意单位：amount = 数量 * 10^decimals）
+await mintTo(
+  connection, me,
+  mint, myAta.address,
+  me,                 // mintAuthority（必须签名）
+  1000 * 10 ** 6      // 1000 个，精度 6
+);
+console.log("我的 ATA 余额:", (await getAccount(connection, myAta.address)).amount);
+
+// 4) 为 friend 创建 ATA 并转 200 个过去
+const friendAta = await getOrCreateAssociatedTokenAccount(
+  connection, me, mint, friend.publicKey
+);
+await transfer(
+  connection, me,
+  myAta.address,      // 源
+  friendAta.address,  // 目标
+  me,                 // owner/授权者（必须签名）
+  200 * 10 ** 6
+);
+console.log("friend ATA 余额:", (await getAccount(connection, friendAta.address)).amount);
+</code></pre>
+
+<h3>9.1 读取并解析代币账户数据</h3>
+<pre><code>// 直接在链上查询某人某 mint 的 ATA 是否存在、余额多少
+const ataAddr = await getAssociatedTokenAddress(mint, friend.publicKey);
+const info = await connection.getAccountInfo(ataAddr);
+if (!info) {
+  console.log("该用户还没有这个代币的 ATA");
+} else {
+  // getAccount 会把 SPL 标准布局解析成结构化对象
+  const acc = await getAccount(connection, ataAddr);
+  console.log({
+    mint: acc.mint.toBase58(),
+    owner: acc.owner.toBase58(),
+    amount: acc.amount.toString(), // 原始整数（含 decimals）
+    isFrozen: acc.isFrozen,
+  });
+}
+
+// 列出某地址持有的所有 SPL Token 账户（钱包余额面板的实现基础）
+const tokens = await connection.getParsedTokenAccountsByOwner(me.publicKey, {
+  programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"), // SPL Token Program
+});
+for (const { account } of tokens.value) {
+  const data = account.data.parsed.info;
+  console.log(data.mint, "余额:", data.tokenAmount.uiAmount);
+}
+</code></pre>
+
+<h3>9.2 设置优先费（ComputeBudgetProgram）</h3>
+<p>网络拥堵时，附加优先费指令可提升打包优先级。</p>
+<pre><code>import { ComputeBudgetProgram } from "@solana/web3.js";
+import { TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+
+// 构造带优先费的转账交易
+const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 });
+const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 });
+
+const tx = new Transaction()
+  .add(modifyComputeUnits, addPriorityFee)
+  .add(SystemProgram.transfer({
+    fromPubkey: me.publicKey,
+    toPubkey: friend.publicKey,
+    lamports: 1000,
+  }));
+
+const sig = await connection.sendTransaction(tx, [me]);
+await connection.confirmTransaction(sig, "confirmed");
+console.log("已带优先费发送:", sig);
+</code></pre>
+
+<h3>9.3 签名消息 signMessage（钱包适配器场景）</h3>
+<p>钱包常用于"签名一段消息"来证明身份（登录、领空投），<strong>不发送链上交易</strong>。注意 web3.js 本身不直接 signMessage，前端由钱包扩展提供：</p>
+<pre><code>// 浏览器端（钱包已连接时），用 window.solana 或 adapter 提供的 signMessage
+// 这里演示纯 Node 用 keypair 完成等效签名，便于理解
+import nacl from "tweetnacl";
+import bs58 from "bs58";
+
+const message = "登录 example.com 时间为 2026-09-03";
+const signature = nacl.sign.detached(
+  new TextEncoder().encode(message),
+  me.secretKey // 实际前端由用户钱包签名，私钥不出设备
+);
+const ok = nacl.sign.detached.verify(
+  new TextEncoder().encode(message),
+  signature,
+  me.publicKey.toBytes()
+);
+console.log("验签通过?", ok);
+console.log("签名(base58):", bs58.encode(signature));
+</code></pre>
+
+<h2 id="s10">10. 前端集成 wallet-adapter</h2>
+<p>真实 DApp 不应自己管私钥，而是让用户用 Phantom / Solflare 等浏览器扩展钱包。<code>@solana/wallet-adapter</code> 提供统一接口。下面是一个<strong>最小完整 React 示例</strong>。</p>
+<pre><code>// 安装：npm i @solana/wallet-adapter-react @solana/wallet-adapter-react-ui @solana/wallet-adapter-wallets
+//        @solana/web3.js @solana/wallet-adapter-base
+
+// App.tsx
+import { useMemo } from "react";
+import { ConnectionProvider, WalletProvider, useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
+import { PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction } from "@solana/web3.js";
+
+// 1) 顶层：提供 Connection 与 Wallet 上下文
+function App() {
+  const endpoint = "https://api.devnet.solana.com";
+  const wallets = useMemo(() =&gt; [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
+  return (
+    &lt;ConnectionProvider endpoint={endpoint}&gt;
+      &lt;WalletProvider wallets={wallets} autoConnect&gt;
+        &lt;WalletModalProvider&gt;
+          &lt;Dashboard /&gt;
+        &lt;/WalletModalProvider&gt;
+      &lt;/WalletProvider&gt;
+    &lt;/ConnectionProvider&gt;
+  );
+}
+
+// 2) 业务组件：连接按钮 + 余额 + 转账
+function Dashboard() {
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction, connected } = useWallet();
+
+  async function showBalance() {
+    if (!publicKey) return;
+    const bal = await connection.getBalance(publicKey);
+    alert("余额: " + bal / LAMPORTS_PER_SOL + " SOL");
+  }
+
+  async function sendTo(toBase58: string, amountSol: number) {
+    if (!publicKey) throw new Error("请先连接钱包");
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: publicKey,
+        toPubkey: new PublicKey(toBase58),
+        lamports: amountSol * LAMPORTS_PER_SOL,
+      })
+    );
+    // 钱包扩展会弹出签名确认，私钥不出设备
+    const sig = await sendTransaction(tx, connection);
+    await connection.confirmTransaction(sig, "confirmed");
+    alert("已发送，签名: " + sig);
+  }
+
+  return (
+    &lt;div&gt;
+      &lt;WalletMultiButton /&gt; {/* 自带"连接钱包"按钮 */}
+      {connected &amp;&amp; (
+        &lt;div&gt;
+          &lt;button onClick={showBalance}&gt;查余额&lt;/button&gt;
+          &lt;button onClick={() =&gt; sendTo("目标地址Base58", 0.01)}&gt;转 0.01 SOL&lt;/button&gt;
+        &lt;/div&gt;
+      )}
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+<div class="tip"><b>要点</b>：<code>useWallet()</code> 给你 <code>publicKey</code> 与 <code>sendTransaction</code>（由钱包代签），<code>useConnection()</code> 给 RPC 连接。所有"敏感操作"都由钱包扩展弹窗完成，你的前端永远拿不到私钥。</div>
+
+<h2 id="s11">11. web3.js v2、Playground 与脚手架</h2>
+<h3>11.1 VersionedTransaction 与 Address Lookup Table</h3>
+<p>当一笔交易涉及的账户很多（如聚合器路由要调 10+ 个账户），交易体积会超限。<strong>Address Lookup Table（ALT，地址查找表）</strong> 把常用地址"登记"进一个表，交易里只用 1 字节索引引用，从而大幅压缩体积。<strong>VersionedTransaction</strong> 就是支持 ALT 的新交易格式（v0）。</p>
+<pre><code>// web3.js v1 中也可构造 v0 交易
+import { VersionedTransaction, TransactionMessage, AddressLookupTableProgram } from "@solana/web3.js";
+
+// 拿到最近的 blockhash（v0 必须用 blockhash 对象）
+const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+const message = new TransactionMessage({
+  payerKey: me.publicKey,
+  recentBlockhash: blockhash,
+  instructions: [/* 你的指令数组 */],
+}).compileToV0Message(/* 可选：lookupTableAccounts */);
+
+const vtx = new VersionedTransaction(message);
+vtx.sign([me]);
+const sig = await connection.sendTransaction(vtx);
+await connection.confirmTransaction({ blockhash, lastValidBlockHeight, signature: sig });
+</code></pre>
+
+<h3>11.2 Solana Playground 与 create-solana-dapp</h3>
+<ul>
+<li><b>Solana Playground（solpg.io）</b>：浏览器内写 Rust/Anchor 合约、编译、部署到 devnet，零本地环境。新手先做合约强烈推荐。</li>
+<li><b>create-solana-dapp</b>：官方脚手架，一键生成"前端 Next.js + Anchor 合约"的全栈模板，自带 wallet-adapter 与测试。</li>
+</ul>
+<pre><code># 本地脚手架（需要 Node 18+）
+npx create-solana-dapp my-dapp
+# 之后可在 web/ 写前端，anchor/ 写合约，programs/ 放 Rust
+</code></pre>
+
+<h3>11.3 web3.js v2（@solana/kit）新架构简述</h3>
+<p>web3.js v2（包名 <code>@solana/kit</code>，曾用 <code>@solana/web3.js@2</code>）做了重构：</p>
+<ul>
+<li>全面 <strong>Tree-shaking 友好</strong>，按需引入，包体更小；</li>
+<li>采用 <strong>函数式 API</strong>（如 <code>createSolanaRpc</code> 替代 <code>new Connection</code>），地址用 <code>Address</code> 类型而非 <code>PublicKey</code>；</li>
+<li>原生支持 <code>TransactionMessage</code> / <code>VersionedTransaction</code> 与异步签名器（<code>TransactionSendingSigner</code>）；</li>
+<li>默认使用 <strong>Uint8Array 与 ABIs</strong>，性能更好。</li>
+</ul>
+<div class="note"><b>迁移建议</b>：新项目若追求体积/性能可直接用 v2；但生态大量示例与 spl-token 仍基于 v1。建议先精通 v1 的 <code>Connection / Keypair / Transaction</code> 心智模型，再平滑过渡到 v2，二者概念一致，只是 API 形态不同。</div>
+
+<h2 id="s12">12. RPC 服务商与限速坑</h2>
+<p>公共 RPC <code>api.devnet.solana.com</code> / <code>api.mainnet-beta.solana.com</code> 有严格限速（约 1~2 请求/秒、每日配额低），只适合练手，做产品必须换专业服务商：</p>
+<table>
+<tr><th>服务商</th><th>特点</th></tr>
+<tr><td>Helius</td><td>增强 API（getAssets、webhook）、文档友好，新手友好</td></tr>
+<tr><td>QuickNode</td><td>稳定老牌、全球节点、有 Solana 专用插件</td></tr>
+<tr><td>Triton</td><td>Solana 基金会背景团队，专业 RPC</td></tr>
+</table>
+<div class="warn"><b>限速坑清单</b>：
+<ul style="margin-top:6px">
+<li>429 错误：并发过高，需加指数退避重试；</li>
+<li><code>getProgramAccounts</code> 在大程序上极慢且可能被熔断，优先用索引器/增强 API；</li>
+<li>blockhash 过期：长任务要定期刷新 recentBlockhash；</li>
+<li>preflight 失败：<code>sendTransaction</code> 默认先 simulate，若节点状态不同步会误报，可关 <code>skipPreflight</code>（谨慎）；</li>
+<li>WebSocket 订阅（onAccountChange）在公共 RPC 常掉线，生产要用长连接管理。</li>
+</ul></div>
+
+<h2 id="s13">13. 本地 CLI 与 devnet 工作流</h2>
+<p>除了 Node 代码，官方 <strong>Solana CLI</strong> 是钱包开发必备的调试与运维工具。安装 agave 工具链后：</p>
+<pre><code># 安装 Solana CLI（agave 发行版）
+sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+
+# 切换到 devnet 并查看当前配置
+solana config set --url devnet
+solana config get
+
+# 生成一个新的文件钱包（默认写入 ~/.config/solana/id.json）
+solana-keygen new --outfile ~/my-wallet.json
+solana address   # 打印地址
+
+# 命令行直接领水（仅 devnet/testnet）
+solana airdrop 2
+
+# 命令行转账
+solana transfer &lt;目标地址Base58&gt; 0.5 --allow-unfunded-recipient
+
+# 查看账户详情（含 owner / 可执行 / 余额 / 数据长度）
+solana account &lt;地址&gt;
+</code></pre>
+<div class="tip"><b>钱包文件路径</b>：CLI 钱包是 JSON 文件，内容是 64 字节私钥数组。Node 里可用 <code>Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(path))))</code> 加载，便于脚本化运维。</div>
+
+<h3>13.1 从文件加载 CLI 钱包到 web3.js</h3>
+<pre><code>import fs from "fs";
+import { Keypair } from "@solana/web3.js";
+
+// CLI 默认钱包路径（Linux/macOS）；Windows 通常是 C:\\Users\\&lt;你&gt;\\.config\\solana\\id.json
+const home = process.env.HOME || process.env.USERPROFILE;
+const path = home + "/.config/solana/id.json";
+const secret = Uint8Array.from(JSON.parse(fs.readFileSync(path, "utf8")));
+const cliKeypair = Keypair.fromSecretKey(secret);
+console.log("CLI 钱包地址:", cliKeypair.publicKey.toBase58());
+</code></pre>
+
+<h2 id="s14">14. 关闭账户与回收免租押金</h2>
+<p>不再需要的代币账户会一直锁着押金。<code>closeAccount</code> 可将其关闭，押金退回指定地址——这是链上"清理垃圾、回笼 SOL"的标准姿势。</p>
+<pre><code>import { closeAccount } from "@solana/spl-token";
+
+// 把 friend 的 ATA 关闭，押金退回 friend 自己
+await closeAccount(
+  connection,
+  me,                       // payer（付手续费）
+  friendAta.address,        // 要关闭的代币账户
+  friend.publicKey,         // 押金接收者
+  friend                   // 该账户的 owner（必须授权签名）
+);
+console.log("已关闭 ATA，押金已退回 friend");
+
+// 关闭后该地址的账户信息变为不存在
+const after = await connection.getAccountInfo(friendAta.address);
+console.log("关闭后账户:", after); // null
+</code></pre>
+<div class="note"><b>注意</b>：只有账户的 owner（或经授权的 delegate）能关闭它；关闭后余额必须先清零或随账户一并处理，具体取决于实现。生产钱包应提供"一键回收小额代币账户押金"功能，提升用户体验。</div>
+
+<h2 id="s15">15. approve / delegate：授权第三方代付</h2>
+<p>类比 ERC-20 的 <code>approve</code>，SPL Token 用 <code>approve</code> + <code>transfer</code>（由 delegate 发起）实现授权。下面的例子演示"授权另一个密钥花我的代币"：</p>
+<pre><code>import { approve, createApproveInstruction, revoke } from "@solana/spl-token";
+
+// 授权 delegateKey 可以最多动我 ATA 里的 500 个代币
+await approve(
+  connection, me,
+  myAta.address,    // 被授权的代币账户
+  delegateKey,      // 受托人（delegate）公钥
+  me,               // owner（授权者，签名）
+  500 * 10 ** 6     // 授权额度
+);
+
+// 之后 delegate 可以"代我"把代币转走（delegate 自己签名）
+// 在 DApp 里这一步往往由合约 CPI 完成，前端只负责 approve
+import { createTransferInstruction } from "@solana/spl-token";
+const ix = createTransferInstruction(
+  myAta.address,      // 源（我的）
+  friendAta.address,   // 目标
+  delegateKey,        // 授权者（delegate 作为签名者）
+  [delegateKey],      // 签名者
+  100 * 10 ** 6
+);
+const tx = new Transaction().add(ix);
+const sig = await connection.sendTransaction(tx, [delegateKeypair]);
+
+// 收回授权
+await revoke(connection, me, myAta.address, me);
+</code></pre>
+<div class="warn"><b>授权风险</b>：approve 给无限额度（<code>MAX</code>）是常见漏洞来源。钱包 UI 应清晰展示"你授权了哪个合约、多少额度"，并鼓励用户用小额或及时 revoke。</div>
+
+<h2 id="s16">16. 离线签名与冷钱包思路</h2>
+<p>高安全场景（金库、多签）要求<strong>私钥所在环境不联网</strong>。做法是：在联网机器构造并序列化交易，传到离线机器签名，再把签名结果回传广播。</p>
+<pre><code>// 联网机器：构造交易并序列化为 base64（不含签名）
+const tx = new Transaction().add(
+  SystemProgram.transfer({
+    fromPubkey: vault.publicKey,
+    toPubkey: friend.publicKey,
+    lamports: 1_000_000,
+  })
+);
+tx.feePayer = vault.publicKey;
+tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+const serialized = tx.serialize({ requireAllSignatures: false }).toString("base64");
+// 把 serialized 通过安全通道交给冷机
+
+// 离线机器：反序列化 -&gt; 用冷私钥签名 -&gt; 导出签名
+import { Transaction } from "@solana/web3.js";
+const coldTx = Transaction.from(Buffer.from(serialized, "base64"));
+coldTx.partialSign(coldKeypair); // 只签，不广播
+const signedBase64 = coldTx.serialize({ requireAllSignatures: false }).toString("base64");
+// 回传 signedBase64
+
+// 联网机器：恢复并广播
+const finalTx = Transaction.from(Buffer.from(signedBase64, "base64"));
+const sig = await connection.sendRawTransaction(finalTx.serialize());
+await connection.confirmTransaction(sig, "finalized");
+</code></pre>
+<div class="tip"><b>partialSign</b>：Solana 交易支持"多方逐步签名"。多方、多签、冷签都靠 <code>partialSign</code> + <code>requireAllSignatures:false</code> 实现，最后再以 <code>sendRawTransaction</code> 广播。</div>
+
+<h2 id="s17">17. 钱包余额面板最小实现</h2>
+<p>把上面能力拼起来，就是一个最简"钱包首页"：左边 SOL 余额，右边 SPL 代币列表。</p>
+<pre><code>async function getWalletPortfolio(owner: PublicKey) {
+  // 1) SOL 余额
+  const solBalance = await connection.getBalance(owner) / LAMPORTS_PER_SOL;
+
+  // 2) 所有 SPL 代币账户
+  const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, {
+    programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  });
+
+  const tokens = tokenAccounts.value.map(({ account }) =&gt; {
+    const info = account.data.parsed.info;
+    return {
+      mint: info.mint,
+      amount: info.tokenAmount.uiAmount,    // 已按 decimals 折算后的可读数
+      decimals: info.tokenAmount.decimals,
+    };
+  }).filter((t) =&gt; t.amount &gt; 0); // 过滤零余额
+
+  return { solBalance, tokens };
+}
+
+// 使用
+const portfolio = await getWalletPortfolio(me.publicKey);
+console.log("SOL:", portfolio.solBalance);
+portfolio.tokens.forEach((t) =&gt; console.log(t.mint, t.amount));
+</code></pre>
+
+<h2 id="s18">18. 常见错误排查表</h2>
+<table>
+<tr><th>报错 / 现象</th><th>原因</th><th>解决</th></tr>
+<tr><td>blockhash not found</td><td>recentBlockhash 过期（约 150 slot）</td><td>重新获取最新 blockhash 再签</td></tr>
+<tr><td>0x1 / insufficient funds</td><td>余额不足（含手续费与免租押金）</td><td>先领水 / 预留手续费</td></tr>
+<tr><td>account already in use</td><td>要 init 的地址已存在</td><td>换种子 / 不要重复创建</td></tr>
+<tr><td>missing signature</td><td>某 signer 未签名</td><td>检查 sendTransaction 的签名者数组</td></tr>
+<tr><td>429 Too Many Requests</td><td>公共 RPC 限速</td><td>退避重试 / 换专业 RPC</td></tr>
+<tr><td>Transaction simulation failed</td><td>指令逻辑/账户 meta 错误</td><td>用 simulateTransaction 看 logs</td></tr>
+<tr><td>custom program error: 0x...</td><td>合约自定义错误码</td><td>对照程序文档的错误码表</td></tr>
+</table>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 <code>Keypair.generate()</code> 生成钱包，调用 <code>requestAirdrop</code> 领 2 SOL，打印余额。</li>
+<li>从一段固定助记词按 <code>m/44'/501'/0'/0'</code> 派生地址，验证两次派生结果一致。</li>
+<li>把 0.5 SOL 转给另一个生成地址，分别用 <code>confirmed</code> 与 <code>finalized</code> 等待并对比时间。</li>
+<li>用 spl-token 创建一个 6 位精度的 Mint，铸造 1000 个给自己的 ATA，再转 300 给朋友。</li>
+<li>用 <code>getParsedTokenAccountsByOwner</code> 列出你地址持有的全部 SPL 代币。</li>
+<li>（进阶）把上面转账改成带 <code>ComputeBudgetProgram.setComputeUnitPrice</code> 的优先费版本。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能用一句话解释 PoH 不是共识、而是"可验证全局时钟"；</li>
+<li>能说清 confirmed 与 finalized 的安全差异与适用场景；</li>
+<li>能画出"程序账户(无状态) + 数据账户(存状态) + owner"的关系；</li>
+<li>能解释 rent-exempt 押金与"关账户退押金"机制；</li>
+<li>能说清 Instruction 三要素与 account meta 的 signer/writable 含义；</li>
+<li>能解释 PDA 为什么"无私钥"、程序如何"代签"；</li>
+<li>能区分 Mint / TokenAccount / ATA，并说清与 ERC-20 的差异；</li>
+<li>能独立写出 web3.js v1 的转账与 spl-token 铸造完整代码；</li>
+<li>能说清 wallet-adapter 如何做到"私钥不出设备"；</li>
+<li>知道公共 RPC 的限速坑和至少两个专业 RPC 服务商。</li>
+</ul></div>
+
+<div class="pager"><a href="06-eth-defi.html"><b>上一篇</b>← ETH 篇：DeFi 交互</a><a class="next" href="08-sol-anchor.html"><b>下一篇</b>SOL 篇 II：Rust 与 Anchor 合约开发 →</a></div>
+</main></body></html>

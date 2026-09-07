@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC 篇 III：生态与 BTCfi</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html" class="cur">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">BTC 篇 III：生态与 BTCfi</span><span class="chain chain-btc">BTC</span></header>
+<main class="doc">
+<h1>BTC 篇 III：生态与 BTCfi</h1>
+<p class="subtitle">从主链脚本走到 Layer2、资产协议与 BTC 质押。本篇不再重复基础概念，而是站在「钱包开发者」的视角，系统梳理比特币生态里你必须知道、且会直接影响钱包实现的技术栈。主要参考：Lightning BOLTs（github.com/lightning/bolts）、Liquid 文档（docs.liquid.net）、Stacks/Clarity（docs.stacks.co）、Ordinals（docs.ordinals.com）、Runes（github.com/ordinals/runes）、RGB（rgb.tech）、Babylon（babylonlabs.io）、BitVM（bitvm.org）。</p>
+<div class="goals"><b>本章目标：</b>
+<ol>
+<li>说清闪电网络如何用「支付通道 + HTLC」把链下交易变成链上最终结算，并能用 Polar 在本地开一条通道。</li>
+<li>区分 Liquid、Stacks、RGB 这三种「扩展路线」的本质差异：侧链、L2 结算层、客户端验证资产协议。</li>
+<li>彻底理解 Ordinals / BRC-20 / Runes 三种资产范式的数据写入位置与 UTXO 模型影响，知道钱包为何要做「铭文感知」。</li>
+<li>说清 Taproot（bc1p）地址在生态中的核心地位，并能在钱包里实现 cardinal 与 ordinal/taproot 双地址模式。</li>
+<li>了解 Babylon 质押与 BitVM 这两个「把 BTC 安全属性外溢」的前沿方向，以及它们对钱包签名流程的潜在要求。</li>
+</ol>
+</div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 总览：比特币生态的分层地图</a>
+<a href="#s2">2. 闪电网络：链下支付通道</a>
+<a href="#s3">3. 闪电网络实战：Polar 开通道</a>
+<a href="#s4">4. Liquid 侧链与 confidential 资产</a>
+<a href="#s5">5. Stacks：BTC 锚定的智能合约 L2</a>
+<a href="#s6">6. Ordinals 与 Inscriptions（铭文）</a>
+<a href="#s7">7. BRC-20 与 Runes：UTXO 上的同质化代币</a>
+<a href="#s8">8. RGB：客户端验证的智能资产</a>
+<a href="#s9">9. Babylon：BTC 原生质押</a>
+<a href="#s10">10. BitVM：比特币上的乐观计算</a>
+<a href="#s11">11. 钱包开发者须知：bc1p 与铭文感知</a>
+<a href="#s12">12. 实战：用 ord 在 testnet 刻铭文</a>
+<a href="#s13">13. BTCfi 风险与工程清单</a>
+<a href="#s14">14. 经典资源链接表</a>
+</div>
+<h2 id="s1">1. 总览：比特币生态的分层地图</h2>
+<p>读完前两篇，你已经能用 bitcoinjs-lib 在<b>主链（L1）</b>上收发比特币、写脚本、做多签与 PSBT。但「在 L1 上做一切」代价很高：区块空间稀缺、确认慢、无法跑复杂合约。于是生态自然按「离主链的距离」分成了几层。</p>
+<table>
+<tr><th>层</th><th>代表方案</th><th>信任假设</th><th>典型用途</th></tr>
+<tr><td>L1 主链</td><td>原生 BTC、Taproot</td><td>比特币 PoW 全网</td><td>最终结算、冷存储</td></tr>
+<tr><td>状态通道</td><td>闪电网络</td><td>对手方在线 + 监控链上</td><td>毫秒级小额支付</td></tr>
+<tr><td>侧链</td><td>Liquid、Rootstock</td><td>联邦 / 合并挖矿</td><td> confidential 转账、代币</td></tr>
+<tr><td>L2 结算层</td><td>Stacks、Babylon</td><td>锚定 BTC 经济安全</td><td>sBTC、质押、合约</td></tr>
+<tr><td>资产协议</td><td>Ordinals、Runes、RGB</td><td>协议共识（链下解释）</td><td>NFT、FT、稳定币</td></tr>
+<tr><td>计算层</td><td>BitVM</td><td>欺诈证明 + 挑战期</td><td>乐观验证任意计算</td></tr>
+</table>
+<div class="note"><b>一个关键认知：</b>除了 L1 主链是比特币全网共识保证的，下面每一层都引入了额外的信任假设或新的「协议共识」。作为钱包开发者，你写的每一行与这些层交互的代码，本质都是在<b>替用户相信某个外部系统</b>。把信任边界写清楚，是钱包安全的第一课。</div>
+<p>我们可以用一张「安全—性能」光谱来建立直觉：越靠近 L1，最终性越强、篡改成本越高，但吞吐越低、功能越受限；越往外，吞吐与表达力越强，但你需要额外假设「运营方诚实」「索引器一致」「挑战者存在」。没有银弹，只有权衡。</p>
+<table>
+<tr><th>维度</th><th>L1 主链</th><th>闪电网络</th><th>侧链(Liquid)</th><th>L2(Stacks)</th><th>资产协议</th></tr>
+<tr><td>最终性来源</td><td>PoW 重组抵抗</td><td>链上罚没</td><td>联邦多签</td><td>BTC 锚定</td><td>索引器共识</td></tr>
+<tr><td>确认时间</td><td>10 分钟级</td><td>毫秒级</td><td>~1 分钟</td><td>数分钟</td><td>依主链块</td></tr>
+<tr><td>智能合约</td><td>有限脚本</td><td>HTLC</td><td>Elements 脚本</td><td>Clarity</td><td>类型相关</td></tr>
+<tr><td>钱包复杂度</td><td>低</td><td>高(常在线)</td><td>中</td><td>中高</td><td>高(索引器)</td></tr>
+</table>
+<h2 id="s2">2. 闪电网络：链下支付通道</h2>
+<h3>2.1 为什么需要闪电网络</h3>
+<p>比特币主链确认一笔交易通常需要 10 分钟到 1 小时，且每笔都要付手续费。用 L1 去买一杯咖啡：慢、贵、还暴露隐私。闪电网络的思路是：<b>把绝大多数小额交易移到链下，只在「开通道」和「关通道」时上链</b>，中间可以发生无限次近乎免费的即时转账。</p>
+<h3>2.2 支付通道：两个人之间的私人账本</h3>
+<p>假设 Alice 和 Bob 各拿出 0.5 BTC 放进一个<b> 2-of-2 多签地址</b>（通道资金），这笔「融资交易（funding tx）」必须上链锁定资金。之后他们在链下不断交换一笔「承诺交易（commitment tx）」，内容永远是「这个 2-of-2 池子里，Alice 占 X、Bob 占 Y」。只要 X+Y 恒等于 1，账本就是自洽的。</p>
+<pre><code># 通道状态演进（链下，不上链，只有最新一版有效）
+初始：Alice 0.5 / Bob 0.5
+Alice 付 Bob 0.1：Alice 0.4 / Bob 0.6   # 新承诺交易，双方签名
+Alice 付 Bob 0.2：Alice 0.2 / Bob 0.8   # 更新的承诺交易，使旧版作废
+</code></pre>
+<div class="warn"><b>双花问题在链下重现：</b>如果 Alice 把旧版承诺交易（她还占 0.5）偷偷上链，她就能「双花」掉已经付给 Bob 的钱。闪电网络用两种机制防止：①每更新一次状态就用一把新「撤销密钥（revocation key）」交给对方，旧状态的撤销密钥一旦被广播，对方可立刻罚没全部资金；②配合时间锁让对手方有时间反应。</div>
+<h3>2.3 承诺交易的「对称」结构</h3>
+<p>每次状态更新，双方其实各自持有一份<b>镜像</b>的承诺交易：A 持有的版本允许 A 立即取回自己的部分、但 B 的部分要等时间锁解锁（给 B 反应时间）；B 持有的版本反之。配合 revocation key，谁广播旧状态谁就被罚没。这种「不对称」是闪电安全的核心。</p>
+<pre><code># A 持有的承诺交易（A 视角）
+output0: &lt;A 余额&gt; 给 A，但带相对时间锁（CSV），让 B 有时间罚没
+output1: &lt;B 余额&gt; 立即给 B
+# 若 A 广播了旧状态，B 用 revocation key 取走 output0，A 颗粒无收
+</code></pre>
+<h3>2.4 HTLC：把通道连成网络</h3>
+<p>只有两两通道还不够。要付给一个不直连的人，需要<b>多跳路由</b>。闪电网络用 HTLC（Hash TimeLock Contract，哈希时间锁合约）实现：</p>
+<ul>
+<li>收款方 Carol 生成一个秘密 <code>preimage R</code>，把哈希 <code>H = hash(R)</code> 放进发票（invoice）。</li>
+<li>付款方 Alice 沿路径 A→B→C 逐跳构造 HTLC：每一跳都「若提供 R 则付款，否则超时退款」。</li>
+<li>Carol 揭示 R 取走最后一跳的钱，R 沿原路回传，每一跳依次解锁。任一段超时则整条回滚。</li>
+</ul>
+<pre><code># HTLC 的语义（伪脚本）
+IF
+  &lt;H&gt;  # 要求支付方提供 R 使得 hash(R) == H
+  SHA256
+  EQUAL
+  &lt;Carol 公钥&gt; CHECKSIG
+ELSE
+  &lt;超时高度/时间&gt; CHECKLOCKTIMEVERIFY
+  DROP
+  &lt;Alice 公钥&gt; CHECKSIG
+ENDIF
+</code></pre>
+<h3>2.5 路由费与流动性</h3>
+<p>中间节点 B 帮忙转发要收「路由费」：通常是 <code>base_fee + fee_rate * amount</code>。通道是<b>有方向的</b>——A→B 有 0.4 流动性不代表 B→A 有。钱包做支付时，路由算法要在「图」里找到一条各段出向流动性都足够的路径，否则支付失败。这是闪电钱包 UX 最难的部分之一。</p>
+<h3>2.6 发票 BOLT11 与节点软件</h3>
+<p>闪电支付靠的是<b>发票（invoice）</b>而非地址。BOLT11 发票是一串 bech32 编码，内含收款节点 ID、金额、支付哈希、过期时间、路由提示等。常见节点实现：</p>
+<table>
+<tr><th>软件</th><th>语言</th><th>特点</th></tr>
+<tr><td>LND</td><td>Go</td><td>生态最成熟，Lang 接口友好</td></tr>
+<tr><td>Core Lightning (CLN)</td><td>C</td><td>轻量、插件化</td></tr>
+<tr><td>Eclair</td><td>Scala</td><td>移动端、ACINQ 维护</td></tr>
+</table>
+<div class="tip"><b>钱包视角：</b>把闪电网络接入钱包有两种模式——①自己做完整节点（LND/CLN，需要常在线、备份 <code>channel.db</code> 与静态通道备份 SCB）；②用<b>托管钱包</b>或<b>非托管但远端节点</b>（如 LDK 嵌入式、或连接自家节点）。托管意味着你把通道私钥交给了服务商，这是信任权衡，必须在 UI 中说清楚。</div>
+<h3>2.7 用 Node.js 读 LND 余额（gRPC 示例）</h3>
+<p>如果钱包后端直连 LND，最干净的方式是用它的 gRPC/REST 接口。下面给出一个用 Node.js 读通道余额的最小示意（真实项目请用官方 <code>lnd</code> npm 包或 REST）：</p>
+<pre><code>// 仅示意：通过 LND REST 读取通道与钱包余额
+// 需要先生成 macaroon 与 tls.cert，并在请求头带上 macaroon
+const https = require("https");
+const fs = require("fs");
+
+const macaroon = fs.readFileSync("/path/to/admin.macaroon").toString("hex");
+const options = {
+  hostname: "127.0.0.1",
+  port: 8080,
+  path: "/v1/balance/channels",
+  method: "GET",
+  headers: { "Grpc-Metadata-macaroon": macaroon },
+  ca: fs.readFileSync("/path/to/tls.cert"),
+};
+
+https.get(options, (res) => {
+  let body = "";
+  res.on("data", (c) => (body += c));
+  res.on("end", () => {
+    const bal = JSON.parse(body);
+    console.log("通道可发送(msat):", bal.balance);
+    console.log("待结算(msat):", bal.pending_open_balance);
+  });
+});
+</code></pre>
+<h3>2.8 洋葱路由与监听塔（Watchtower）</h3>
+<p>闪电支付的路径信息是<b>逐跳加密</b>的（洋葱路由 Sphinx）：每个节点只能看到「上一跳和下一跳」，看不到完整路径，保护隐私。另一项关键工程是<b>监听塔</b>：用户把「如果对手方广播旧状态，请用这个 revocation key 罚没」的证据外包给第三方塔，自己离线时塔代为监控链上，避免被双花。</p>
+<pre><code>// 监听塔交互概念（示意）
+// 1) 用户本地计算 revoked state 的 justice tx（罚没交易）
+// 2) 加密后发给 watchtower，附带触发条件（某 txid 上链）
+// 3) 塔监视链；命中条件则广播 justice tx
+// 钱包需让用户可选择自建塔或可信塔，并说明「塔可看到你有哪些通道」
+</code></pre>
+<h3>2.9 用 JS 模拟一次 HTLC 结算</h3>
+<p>下面用不到 30 行伪代码展示「R 揭示后资金如何解锁」，帮助建立直觉：</p>
+<pre><code>// HTLC 结算模拟（教学用，非真实密码学）
+function htlcClaim(secretR, preimageHash, expectedHash, toCarol, toAlice) {
+  const h = sha256(secretR);
+  if (h === preimageHash &amp;&amp; h === expectedHash) {
+    return toCarol;            // 提供正确 R，Carol 取走
+  }
+  if (Date.now() &gt; timeout) {
+    return toAlice;            // 超时，Alice 退款
+  }
+  throw new Error("等待 R 或超时");
+}
+// 真实实现里 R 的验证发生在比特币 Script，非应用层
+</code></pre>
+<h2 id="s3">3. 闪电网络实战：Polar 开通道</h2>
+<p>Polar（github.com/jamaljsr/polar）是一个本地可视化的闪电网络模拟器，能一键起多个 Bitcoin Core（regtest）+ LND/CLN 节点，非常适合练手。下面是一套最小可跑流程。</p>
+<h3>3.1 图形界面步骤</h3>
+<ol>
+<li>新建网络，添加 1 个 <code>bitcoind</code>(regtest) + 2 个 <code>LND</code> 节点（alice、bob）。</li>
+<li>启动网络，等待 bitcoind 出块（Polar 可一键「mine a block」）。</li>
+<li>给 alice、bob 各发送 regtest 币（Polar 的「Deposit」按钮，它会自动挖块确认）。</li>
+<li>在 alice 节点点「Create Channel」，选择 bob 为目标，容量（capacity）设 1,000,000 sat，push 500,000 sat 给 bob。</li>
+<li>等待通道上链确认，状态变为 <code>Active</code>。</li>
+</ol>
+<h3>3.2 用 LND 命令行（lncli）复刻</h3>
+<pre><code># 假设 alice 的 lncli 通过 --network regtest --lnddir 指向其数据目录
+# 1) 给 bob 的节点 ID 建立连接（peer 由 Polar 在节点详情页给出）
+lncli connect &lt;bob_pubkey&gt;@&lt;bob_host&gt;:&lt;port&gt;
+
+# 2) 开通通道：容量 1,000,000 sat，其中 500,000 推给 bob
+lncli openchannel --node_key=&lt;bob_pubkey&gt; --local_amt=1000000 --push_amt=500000
+
+# 3) 让 bitcoind 挖 6 个块使通道确认
+# （在 Polar 里点 mine blocks，或用 bitcoin-cli generatetoaddress）
+
+# 4) 查看通道
+lncli listchannels
+
+# 5) bob 生成一张收 10 sat 的发票
+# （切到 bob 的 lncli）
+lncli addinvoice --amt=10
+
+# 6) alice 凭发票付款
+lncli payinvoice &lt;bolt11_invoice&gt;
+
+# 7) 查询余额变化
+lncli channelbalance
+lncli walletbalance
+</code></pre>
+<h3>3.3 通道的生命周期与关闭</h3>
+<p>通道不止「开」一种结局：</p>
+<table>
+<tr><th>关闭方式</th><th>触发</th><th>特点</th></tr>
+<tr><td>合作关闭</td><td>双方同意</td><td>单笔结算交易，立即生效，省费</td></tr>
+<tr><td>单方关闭</td><td>一方广播承诺交易</td><td>对手方需等待时间锁才能取回资金</td></tr>
+<tr><td>罚没关闭</td><td>广播了 revoked 旧状态</td><td>对手方用 revocation key 取走全部</td></tr>
+</table>
+<div class="warn"><b>钱包必须做的：</b>① 定期备份通道状态（SCB 或完整 db）；② 节点离线太久可能错过对手方广播的旧状态，需在 UI 提示「长期离线风险」；③ 关通道时要向用户解释「资金回到主链需要等待确认」。</div>
+<div class="exercise"><b>练习：</b>在 Polar 里构造一条 A→B→C 三跳支付：再加一个 carol 节点，让 alice 通过 bob 路由付给 carol。观察 <code>lncli listchannels</code> 中每条通道的本地/远端余额如何因 HTLC 临时变化。</div>
+<h2 id="s4">4. Liquid 侧链与 confidential 资产</h2>
+<h3>4.1 什么是侧链</h3>
+<p>Liquid 是由<b>联邦（federation）</b>运营的、与比特币双向锚定的侧链。用户把 BTC 锁在主链上的 federation 多签地址，联邦在 Liquid 上发行等量的 <b>L-BTC</b>；赎回时反向销毁。侧链有自己独立的区块、地址格式（以 <code>lq1</code> / <code>V</code> / <code>G</code> 等开头）和更短的确认时间（约 1 分钟）。</p>
+<div class="note"><b>信任模型：</b>Liquid 的安全不来自比特币矿工，而来自运营联邦的成员（多为交易所、基础设施公司）。联邦作恶或合谋可冻结/盗取资金。它换来的是：更快的区块、更强的隐私（confidential transactions 隐藏金额与资产类型）、以及原生的发行资产（issuance）能力。</div>
+<h3>4.2 Confidential Transactions（机密交易）</h3>
+<p>Liquid 用 Pedersen 承诺 + 范围证明（Bulletproofs）隐藏每笔交易的<b>金额</b>和<b>资产类型</b>，同时仍能通过密码学证明「输入总额 = 输出总额」不超发。对钱包开发者而言，这意味着你的 UI 不能像主链那样直接显示从链上「读出」的余额，而必须依赖钱包本地维护的 blinded 视图。</p>
+<pre><code>// 概念示意：confidential 输出不再直接写金额，而是写承诺
+// vout[i].value = "00" (占位) + range_proof
+// vout[i].asset = 资产承诺 (隐藏是 L-BTC 还是某发行代币)
+// 验证者能确认 sum(inputs) == sum(outputs) 而不知具体数字
+</code></pre>
+<h3>4.3 资产发行（Issuance）</h3>
+<p>Liquid 允许任意人在侧链上发行带「资产标签」的代币（用于稳定币、证券型代币等）。发行时会产生一个<b>重铸令牌（reissuance token）</b>，持有它才能增发/销毁。钱包若要展示 L-BTC 之外的资产，需要解析 <code>issue</code> 交易并维护资产注册表。</p>
+<pre><code># elements-cli（Liquid 的 bitcoind 改版）发行资产示意
+# 在 Liquid 节点上发行 100 万单位的「MyAsset」
+elements-cli issueasset 1000000 0
+# 返回包含 asset 标识与 reissuance token 的 JSON
+# 钱包需保存 asset 的 hex 标签以便后续转账展示
+</code></pre>
+<h3>4.4 钱包整合要点</h3>
+<ul>
+<li><b>地址格式不同</b>：Liquid 使用自己的 bech32 变体与前缀，不能和主链地址混用，否则资金丢失。</li>
+<li><b>余额来自盲化</b>：本地必须保存 blinding key，丢了就看不到/花不了自己的 confidential 余额。</li>
+<li><b>区块更快</b>：约 1 分钟出块，确认数语义与主链不同，UI 文案要区分。</li>
+</ul>
+<h3>4.5 双向锚定：peg-in 与 peg-out</h3>
+<p>用户要进入 Liquid，需要先<b> peg-in</b>（主链锁 BTC → 侧链发 L-BTC）；退出则 <b>peg-out</b>（销毁 L-BTC → 主链解锁 BTC）。前者由用户发起、联邦确认；后者需联邦多签协作。钱包必须清晰区分「我在主链上的 BTC」与「我在 Liquid 上的 L-BTC」，二者地址与私钥体系不同。</p>
+<table>
+<tr><th>步骤</th><th>peg-in（入金）</th><th>peg-out（出金）</th></tr>
+<tr><td>1</td><td>在 Liquid 生成领取地址</td><td>在主链生成收款地址</td></tr>
+<tr><td>2</td><td>主链向 federation 多签发 BTC</td><td>侧链发起 burn L-BTC</td></tr>
+<tr><td>3</td><td>联邦确认后侧链 mint L-BTC</td><td>联邦多签在主链解锁 BTC</td></tr>
+<tr><td>信任点</td><td>联邦诚实 mint</td><td>联邦诚实签名释放</td></tr>
+</table>
+<h2 id="s5">5. Stacks：BTC 锚定的智能合约 L2</h2>
+<h3>5.1 PoX 与锚定</h3>
+<p>Stacks 是一条独立的 L2 区块链，它的出块哈希会写到比特币区块里（锚定），从而继承 BTC 的安全性叙事。其共识叫 <b>PoX（Proof of Transfer）</b>：矿工不烧电，而是把 BTC 转给 STX 持有者（「堆叠者」）来竞争出块权。这样 BTC 持有者可以通过「锁定 STX 换 BTC 奖励」参与，而不消耗额外能源。</p>
+<h3>5.2 Clarity：可预测的智能合约语言</h3>
+<p>Stacks 的合约语言 <b>Clarity</b> 刻意<b>不是图灵完备</b>的：没有循环、所有函数必须能静态判定是否终止。它直接以源码形式上链（不编译成字节码），所以任何人看到的合约就是实际执行的合约，消除「编译不一致」风险。变量用显式 <code>let</code>，状态用 <code>map</code> / <code>var</code> 存储。</p>
+<pre><code>;; Clarity 合约示例：一个简单的计数器
+;; 部署在 Stacks 上，可用 Hiro Explorer 查询
+(define-data-var counter int 0)
+
+(define-public (increment)
+  (begin
+    (var-set counter (+ (var-get counter) 1))
+    (ok (var-get counter))))
+
+(define-read-only (get-count)
+  (var-get counter))
+
+;; 调用：在 Clarinet 或 Hiro 钱包里执行 (increment)
+;; 返回新计数；任何人可 (get-count) 读取当前值
+</code></pre>
+<h3>5.3 Clarity 的类型与权限</h3>
+<p>Clarity 是强类型的，常见类型有 <code>uint</code>、<code>principal</code>（地址）、<code>bool</code>、<code>(response ...)</code>、<code>(optional ...)</code> 等。写合约要用 <code>define-public</code> 返回 <code>(ok ...)</code> 或 <code>(err ...)</code>。钱包在调用合约前，应当先用节点的 <code>read-only</code> 模拟执行，向用户展示「会调用哪个函数、可能失败的错误码」。</p>
+<pre><code>;; 一个带权限检查的代币转账片段（示意）
+(define-map balances principal uint)
+
+(define-public (transfer (to principal) (amt uint))
+  (let ((sender tx-sender)
+        (bal (default-to u0 (map-get? balances sender))))
+    (asserts! (&gt;= bal amt) (err u1))           ;; 余额不足
+    (map-set balances sender (- bal amt))
+    (map-set balances to (+ (default-to u0 (map-get? balances to)) amt))
+    (ok true)))
+</code></pre>
+<div class="warn"><b>注意转义：</b>上面的 <code>&gt;=</code> 在 HTML 代码块里必须写成 <code>&amp;gt;=</code>，否则浏览器会把 <code>&gt;</code> 当成标签结尾。所有 <code>&lt;</code> <code>&gt;</code> <code>&amp;</code> 在 <code>&lt;pre&gt;&lt;code&gt;</code> 内都要转义。</div>
+<h3>5.4 sBTC：把 BTC 真正搬上 L2</h3>
+<p><b>sBTC</b> 是 Stacks 上的 BTC 锚定资产（由去中心化签名者网络托管主链 BTC，1:1 发行 sBTC）。有了 sBTC，开发者可以在 Clarity 合约里写「用 BTC 做抵押借贷、DEX、收益策略」的 BTCfi 应用，而底层安全锚定回比特币。钱包若要支持 sBTC，需要同时管理主链 BTC 地址、Stacks 地址（<code>SM...</code> 格式）和桥接存款/赎回流程。</p>
+<pre><code>// sBTC 存款/赎回流程（概念）
+// 1) 用户从主链 BTC 地址向 sBTC 桥接多签地址发送 BTC（带 Stacks 地址 memo）
+// 2) 签名者观察到主链存款，在 Stacks 上调用 mint，给用户 SM 地址发 sBTC
+// 3) 赎回时用户在 Stacks 烧毁 sBTC，签名者将主链 BTC 退回用户 BTC 地址
+// 钱包需展示：主链确认数、桥接状态、预计等待时间
+</code></pre>
+<div class="tip"><b>本地开发：</b>用 <code>clarinet</code>（Stacks 官方 CLI）新建项目、写合约、起本地测试网；用 <code>Hiro Wallet</code> 浏览器扩展连接 dApp 做交互测试。建议钱包在展示 sBTC 余额时明确标注「由签名者托管，非主链 BTC」。</div>
+<h3>5.5 钱包如何处理 Stacks 地址与资产</h3>
+<p>Stacks 地址以 <code>SM</code>（主网）/ <code>SN</code>（测试网）开头，与比特币地址体系无关，但常用同一套助记词（BIP39）按不同派生路径生成。钱包要同时管理三类东西：</p>
+<ul>
+<li><b>主链 BTC 地址</b>：用于 peg-in 锁仓。</li>
+<li><b>Stacks 地址（SM...）</b>：用于 STX、sBTC、合约调用。</li>
+<li><b>资产状态</b>：sBTC 余额、合约内部状态由 Stacks 节点/API 提供。</li>
+</ul>
+<pre><code>// 概念：从同一助记词派生两套地址
+// BTC（BIP84）:  m/84'/0'/0'/0/0  -> bc1q...
+// STX（Stacks 路径）: 对应 Stacks 派生 -> SM...
+// 钱包应把二者关联展示，并提示「向 SM 地址误发 BTC 会丢失」
+</code></pre>
+<h2 id="s6">6. Ordinals 与 Inscriptions（铭文）</h2>
+<h3>6.1 Satoshi 编号</h3>
+<p>Ordinals 协议给<b>每一个聪（satoshi，1 BTC = 1 亿聪）</b>按顺序编号。编号规则：按挖出的顺序，第 N 个被挖出的聪获得编号 N。编号可以通过算法从「它在哪个区块、区块内第几个输出、输出内第几个聪」反推出来。这样每个聪都变成了一个可单独追踪的「藏品」。</p>
+<pre><code>// sat 编号计算（简化版，仅展示思路）
+function satFromOutput(blockHeight, txIndex, outputIndex, outputValue) {
+  // 1) 先算出该区块第一个聪的全局序号（累加之前区块的 coinbase 奖励）
+  // 2) 再按交易顺序、输出顺序、输出内聪顺序累加
+  // 真实实现见 ord 源码 ordinal.rs / sat_point.rs
+}
+</code></pre>
+<h3>6.2 铭文（Inscription）如何刻进链上</h3>
+<p>铭文把任意数据（图片、文本、代码）写入比特币交易。关键技术点：</p>
+<ul>
+<li>数据放在<b>隔离见证（witness）</b>里，因为 witness 数据享受 1/4 的区块权重折扣，便宜。</li>
+<li>用 <code>OP_FALSE OP_IF ... OP_ENDIF</code> 包裹一段「envelope」，里面是 <code>ContentType</code> 与数据分片（<code>OP_PUSH</code>）。</li>
+<li>铭文必须花在一个<b> Taproot 输出</b>上（利用其 witness 可编程性），所以该输出地址是 <code>bc1p...</code>。</li>
+</ul>
+<pre><code># 一个铭文交易的脚本结构（示意，实际由 ord 组装）
+witness:
+  &lt;空&gt;                       # 隔离见证第一个元素（兼容）
+  OP_FALSE
+  OP_IF
+    OP_PUSH "ord"            # 协议标识
+    OP_PUSH 1                # 内容类型标签 = 1
+    OP_PUSH "text/plain;charset=utf-8"
+    OP_PUSH 1                # 数据标签
+    OP_PUSH &lt;数据分片1&gt;
+    OP_PUSH &lt;数据分片2&gt;
+    ...
+  OP_ENDIF
+  &lt;Taproot 脚本花费见证&gt;       # 用该 bc1p 输出的私钥签名花费
+</code></pre>
+<h3>6.3 提交-揭示两阶段（commit-reveal）</h3>
+<p>刻铭文实际是两笔交易：<b>commit</b> 把铭文内容的哈希（作为 Taproot 脚本叶）上链锁定；<b>reveal</b> 在后续块里花掉 commit 输出，把真实数据放出来。两笔必须分开（不能同块），否则数据未确认就被引用会失败。钱包/工具要管理这种「待 reveal」的中间状态。</p>
+<table>
+<tr><th>阶段</th><th>上链内容</th><th>用户感知</th></tr>
+<tr><td>commit</td><td>仅哈希承诺（小）</td><td>已付一半费，铭文未可见</td></tr>
+<tr><td>reveal</td><td>真实 witness 数据</td><td>铭文正式出现在浏览器</td></tr>
+</table>
+<h3>6.4 用 JS 估算铭文体积与手续费</h3>
+<p>钱包在帮用户刻铭文前，应预估这笔交易的体积，避免手续费误算。下面是一个粗略估算示意：</p>
+<pre><code>// 估算铭文交易 vsize（仅示意，真实用 bitcoinjs 构建后再算）
+function estimateInscriptionVSize(dataBytes) {
+  // witness 数据享受 1/4 权重，但 envelope 有固定开销
+  const envelopeOverhead = 40;       // OP_FALSE/IF/内容类型标签等
+  const witnessWeight = (envelopeOverhead + dataBytes) * 4; // 转为 weight
+  const baseVSize = 110;             // 典型 taproot 输入的基准 vsize
+  const vsize = baseVSize + Math.ceil(witnessWeight / 4);
+  return vsize;
+}
+// 若数据 100 KB，vsize 约 25k+ vB，按 20 sat/vB 需约 500k sat 手续费！
+console.log(estimateInscriptionVSize(100 * 1024));
+</code></pre>
+<div class="warn"><b>钱包的重大影响：</b>一个被刻了铭文的 UTXO，其「聪」具有收藏价值，若被当作普通找零花掉，会在无意中把藏品送给矿工或混进普通资金（叫「铭文被损毁/转移」）。钱包必须能识别哪些 UTXO 含有铭文，并允许用户<b>锁定（freeze）</b>它们，避免误花。</div>
+<h3>6.5 Sat 的稀有度（rarity）</h3>
+<p>Ordinals 圈子里给 sat 定义了「稀有度」，因为编号算法让某些 sat 特别稀缺，从而更值钱。常见等级：</p>
+<table>
+<tr><th>等级</th><th>定义</th><th>数量</th></tr>
+<tr><td>common</td><td>普通，每个区块内非第一个</td><td>约 2.1 亿亿</td></tr>
+<tr><td>uncommon</td><td>每个区块的第一个 sat</td><td>约 693 万（按减半算）</td></tr>
+<tr><td>rare</td><td>难度调整期的第一个 sat</td><td>约 3432</td></tr>
+<tr><td>epic</td><td>减半事件后的第一个 sat</td><td>32</td></tr>
+<tr><td>legendary</td><td>创世块后的第一个 sat</td><td>1（sat 0）</td></tr>
+<tr><td>mythic</td><td>创世 sat（sat 0）本身</td><td>1</td></tr>
+</table>
+<div class="note"><b>钱包意义：</b>如果你要展示「这个 sat 稀有」，需要用算法根据区块高度反查它的稀有度属性。注意稀有度是社区共识，不影响链上可转移性，钱包标注时要避免让用户误以为「稀有=更有用」。</div>
+<h2 id="s7">7. BRC-20 与 Runes：UTXO 上的同质化代币</h2>
+<h3>7.1 BRC-20：用 JSON 铭文当账本</h3>
+<p>BRC-20 是 2023 年出现的实验性同质化代币标准。它<b>不改动比特币协议</b>，而是约定：把 <code>deploy</code> / <code>mint</code> / <code>transfer</code> 三种操作的 JSON 文本各自刻成铭文，再靠链下索引器（indexer）按时间顺序重放这些铭文，算出每个地址的余额。</p>
+<pre><code>// BRC-20 的 deploy 铭文内容示例（刻进 witness 的纯文本 JSON）
+{
+  "p": "brc-20",
+  "op": "deploy",
+  "tick": "ordi",
+  "max": "21000000",
+  "lim": "1000"
+}
+// mint 铭文：{"p":"brc-20","op":"mint","tick":"ordi","amt":"1000"}
+// 余额完全由索引器主观解释，不同索引器可能结论不同！
+</code></pre>
+<h3>7.2 BRC-20 的转移两步走</h3>
+<p>BRC-20 转移很别扭：先刻一张 <code>transfer</code> 铭文「授权转移 X 个 tick」，再<b>另外发起一笔普通 BTC 交易</b>把承载该铭文的 UTXO 发给接收方。也就是说「代币」和「承载它的 UTXO」是绑定的——花掉那个 UTXO 就等于发送了代币。这正是它产生大量垃圾 UTXO 的原因。</p>
+<h3>7.3 Runes：UTXO 原生的同质化代币</h3>
+<p>Runes（由 Ordinals 创始人 Casey Rodarmor 提出）批评 BRC-20 产生了大量「废 UTXO」污染。Runes 把代币余额直接编码进<b> UTXO 的脚本/OP_RETURN</b>，每个 UTXO 携带「这个 UTXO 属于哪个 rune、多少量」的状态，转移时按 UTXO 模型自然流转，更贴合比特币原生范式。</p>
+<pre><code># Runes 交易输出携带状态（概念）
+# 输出0: RUNE 转移：{ rune_id: X, amount: 1000 }  -> 给接收方
+# 输出1: RUNE 转移：{ rune_id: X, amount: 500 }   -> 找零回自己
+# 若某输入有 rune 但输出未分配，则按协议「销毁或归矿工」
+# 这与 UTXO 模型天然契合：花输入=重分配其 rune 余额
+</code></pre>
+<h3>7.4 对比表与钱包含义</h3>
+<table>
+<tr><th>维度</th><th>BRC-20</th><th>Runes</th></tr>
+<tr><td>数据载体</td><td>witness 铭文（JSON 文本）</td><td>OP_RETURN / 输出脚本</td></tr>
+<tr><td>状态存储</td><td>链下索引器重放</td><td>UTXO 携带余额状态</td></tr>
+<tr><td>UTXO 影响</td><td>大量垃圾 UTXO</td><td>尽量复用、减少残留</td></tr>
+<tr><td>依赖</td><td>需要 BRC-20 索引器</td><td>Runes 索引器（但模型更干净）</td></tr>
+<tr><td>转移机制</td><td>transfer 铭文 + 后续 send</td><td>UTXO 花费即转移</td></tr>
+</table>
+<div class="note"><b>共识是「社会性的」：</b>Ordinals、BRC-20、Runes 都<b>不是比特币协议层强制的</b>。它们的有效性来自「足够多人运行同一个索引器规则」。钱包若要展示这些资产，必须接入对应索引器（如 ord、ordsupply、官方 API），并明确告知用户这是第三方解释、可能与其他钱包显示不一致。</div>
+<h3>7.5 用 JS 解析 BRC-20 transfer 铭文</h3>
+<p>钱包接入 BRC-20 时，需要从索引器拉取该地址相关的铭文，并按协议解析。下面是一个解析 transfer 文本的极小示例：</p>
+<pre><code>// 解析 BRC-20 transfer 铭文文本（示意，生产请用成熟索引器 SDK）
+function parseBrc20(text) {
+  let o;
+  try { o = JSON.parse(text); } catch { return null; }
+  if (o.p !== "brc-20") return null;
+  switch (o.op) {
+    case "deploy": return { type: "deploy", tick: o.tick, max: o.max, lim: o.lim };
+    case "mint":   return { type: "mint",   tick: o.tick, amt: o.amt };
+    case "transfer":return { type: "transfer", tick: o.tick, amt: o.amt };
+    default: return null;
+  }
+}
+// 注意：余额 = 所有有效 mint/transfer 的净流入，规则由索引器定义
+</code></pre>
+<h3>7.6 Runes 的 edict（法令）模型</h3>
+<p>Runes 在交易输出里用一串 <b>edict</b> 描述「把哪个 rune 的多少量分给第几个输出」。钱包构造 Runes 转移时，要正确填写 edict 数组，并保证所有输入 rune 都被分配（未分配的按协议处理）。这是比 BRC-20 更贴近 UTXO 的范式，但构造逻辑也更易出错。</p>
+<pre><code># Runes edict 示意（每个 edict = id, amount, output_index）
+edicts = [
+  { rune_id: 1, amount: 1000, output: 0 },  # 给接收方输出
+  { rune_id: 1, amount: 500,  output: 1 },  # 自己找零输出
+]
+# 若输入共 1500，分配 1500，无剩余
+# 若只分配 1000，剩余 500 按协议可能销毁或归矿工
+</code></pre>
+<h2 id="s8">8. RGB：客户端验证的智能资产</h2>
+<p>RGB 走了一条和 Ordinals 完全不同的路：<b>客户端验证（client-side validation）</b>。它把资产的定义、转移历史全部放在链下，比特币链上只承担「一次性的承诺（commitment）」——把一段哈希通过 Taproot 输出或 OP_RETURN 写进交易，作为「这笔链下状态已更新」的锚点。</p>
+<ul>
+<li>发行方定义合约（资产总量、名称、模式），生成初始状态。</li>
+<li>每次转移，接收方收到「历史证明包」，本地验证整条链是否合法（双花、超发）。</li>
+<li>链上交易仅做一次 Pedersen 承诺，不泄露资产细节，也不占用 Blob 数据。</li>
+</ul>
+<pre><code>// 概念：RGB 把状态承诺藏进 taproot 输出的 tweak
+// 链上只看得到：一个 Taproot 输出，其脚本/内部密钥被 tweak 过
+// 真正的数据在接收方本地：
+//   - schema（合约规则）
+//   - genesis（发行）
+//   - transition（每次转移的状态 diff）
+// 钱包需要配套 RGB 节点 / 轻客户端来收发这些 "stash"
+</code></pre>
+<h3>8.1 单-use-seal：UTXO 即「锁」</h3>
+<p>RGB 用一个巧妙原语叫 <b>single-use-seal</b>：把比特币的 UTXO 当作「封条」。要转移资产，必须<b>花费</b>那个承载旧状态的 UTXO（封条被撕开=旧状态作废），并在新 UTXO 上盖新封条（新承诺）。因为 UTXO 只能花一次，双花在链层面被物理禁止，而详细历史只在持有者之间传递。</p>
+<div class="tip"><b>钱包含义：</b>RGB 资产不会出现在比特币余额里，也不在 BTC 区块浏览器可查。钱包必须实现一套<b>独立的状态数据库</b>来存储和验证 RGB stash，并在花费承载承诺的 UTXO 时保持该 UTXO 不被破坏（否则链下状态锚点丢失）。</div>
+<h2 id="s9">9. Babylon：BTC 原生质押</h2>
+<p>Babylon 的目标是把比特币的<b>安全（经济权重）</b>借给其他 PoS 链：BTC 持有者在比特币主链上做一笔<b>自带时间锁的自我托管质押交易</b>，把「slashable 凭证」锚定给某条 PoS 链；若该 PoS 链作恶，质押的 BTC 会被罚没（通过可提取的时间锁 + 密码学证据）。</p>
+<ul>
+<li><b>不跨链桥接</b>：BTC 始终留在主链，不发行包装币，保持自托管。</li>
+<li><b>快速解质押</b>：利用比特币时间锁实现「解质押后经过 N 个区块才能动用」，期间若被证明作恶则罚没。</li>
+<li><b>对钱包的影响</b>：需要构造带 <code>CLTV/CSV</code> 时间锁的输出（第二篇学过），并引导用户理解「质押期间资金不可动用」。</li>
+</ul>
+<pre><code>// 质押输出示意：资金锁定到时间 T，且只有用户公钥 + 满足罚没条件可花
+IF
+  &lt;罚没证据验证脚本&gt;   # 由 Babylon 协议定义
+ELSE
+  &lt;T&gt; CHECKLOCKTIMEVERIFY
+  DROP
+  &lt;用户公钥&gt; CHECKSIG
+ENDIF
+</code></pre>
+<h3>9.1 钱包签名流程的变化</h3>
+<p>普通转账用户只关心「金额对、地址对」。但 Babylon 质押要求用户在自己的 UTXO 上附加时间锁脚本，并且可能要在「罚没挑战窗口」内保持可响应。钱包需要：</p>
+<table>
+<tr><th>步骤</th><th>用户动作</th><th>钱包职责</th></tr>
+<tr><td>创建质押</td><td>选金额、锁定时长</td><td>构造带 CLTV 的输出，展示锁定截止高度</td></tr>
+<tr><td>等待</td><td>无需操作</td><td>监控罚没事件，报警</td></tr>
+<tr><td>解质押</td><td>发起解除</td><td>提示「T 个块后才能动用」</td></tr>
+</table>
+<h3>9.2 加密 covenant 与「可提取时间锁」</h3>
+<p>Babylon 的罚没依赖一种<b>可提取时间锁（extractable one-time timelock, EOTS）</b>：质押者用特殊密钥签名，一旦同一密钥签了「两份冲突的 PoS 区块」，就能从签名中反解出私钥，从而动用质押输出实施罚没。钱包在生成这种签名时必须非常小心——绝不能让同一 EOTS 密钥签两份消息，否则资金自动暴露。</p>
+<pre><code>// 概念：EOTS 签名 = 普通 BIP340 签名 + 可被提取的 nonce
+// 正用：签一份 PoS 投票 -> 正常
+// 滥用：用同一 nonce 签两份冲突投票 -> 私钥被提取 -> 罚没
+// 钱包应将 EOTS 密钥隔离，禁止复用 nonce
+</code></pre>
+<h2 id="s10">10. BitVM：比特币上的乐观计算</h2>
+<p>BitVM（BitVM 1 / BitVM 2）试图在<b>不大改比特币脚本</b>的前提下，让链上能验证「任意计算」是否正确——采用乐观 Rollup 思路：</p>
+<ul>
+<li>把程序编译成<b>巨大的布尔电路（NAND 门网）</b>，预上链承诺。</li>
+<li>默认相信计算者提交的结果；若有人质疑，发起<b>欺诈证明挑战</b>，双方通过少量链上交互逐步逼出错误门。</li>
+<li>只要有一个诚实挑战者，作弊必被抓住并罚没。</li>
+</ul>
+<h3>10.1 为什么用 NAND</h3>
+<p>NAND 门是「通用」的：任何布尔电路都能只用 NAND 表达。BitVM 把所有计算归约成 NAND 门的组合，再设计一套「承诺每个门输出 → 挑战者逼问某一门 → 链上只验证那一门」的协议，把验证成本从「重跑整个程序」降到「验证一条路径」。</p>
+<pre><code># 乐观验证流程图（概念）
+# 1) Prover 在链上承诺电路 + 声明输出 Y
+# 2) 静置挑战期；若无人质疑，Y 被接受
+# 3) 若有 Challenger 质疑：
+#     双方交互式逼问：门 g1, g2, ..., gk 的真值
+#     对某一门的矛盾在链上用 Script 验证
+# 4) 作弊者被罚没，诚实方获奖励
+</code></pre>
+<div class="warn"><b>争议与现状：</b>BitVM 理论上能带来图灵完备的 BTC 计算，但当前（截至本教程撰写时）仍处早期：电路规模巨大、挑战和交互成本高、尚未有大规模生产部署。钱包开发者应关注其<b>签名交互协议</b>（用户可能需要在承诺/挑战窗口内做特定签名），但不必现在就接入。把它当作「比特币可编程性演进的方向」来理解即可。</div>
+<h2 id="s11">11. 钱包开发者须知：bc1p 与铭文感知</h2>
+<p>读完本篇，落到工程上，钱包要实现「生态友好」，至少要处理以下三件事。</p>
+<h3>11.1 支持 Taproot 地址 bc1p</h3>
+<p>Taproot（<code>bc1p...</code>，Bech32m 编码）既是 Ordinals 铭文的载体，也是最好的隐私与多签形态。钱包必须能生成和解析 bc1p：</p>
+<pre><code>const bitcoin = require("bitcoinjs-lib");
+const { ECPairFactory } = require("bitcoinjs-lib");
+const tinysecp = require("tiny-secp256k1");
+bitcoin.initEccLib(tinysecp);
+const ECPair = ECPairFactory(tinysecp);
+
+// 生成 x-only 公钥的 Taproot 地址（用于接收可铭文的资金）
+const keyPair = ECPair.makeRandom({ network: bitcoin.networks.bitcoin });
+const { address, output } = bitcoin.payments.p2tr({
+  internalPubkey: keyPair.publicKey.slice(1), // 去掉前缀字节，取 x-only
+  network: bitcoin.networks.bitcoin,
+});
+console.log("bc1p 地址:", address);
+// 注意：Bech32m（不是 Bech32）才是 Taproot 的正确编码，必须校验
+</code></pre>
+<h3>11.2 铭文感知的 UTXO 管理</h3>
+<p>普通钱包把「所有未花费输出」视为同质化余额。但含铭文/Rune 的 UTXO 是<b>非同质化</b>的。必须：</p>
+<ul>
+<li>查询索引器，标记哪些 UTXO 含铭文、哪些含 rune。</li>
+<li>在 coin selection 时<b>默认排除</b>这些 UTXO，或提供「锁定」开关。</li>
+<li>若用户执意花费，UI 必须弹强警告：「此操作会转移/损毁其中的铭文」。</li>
+</ul>
+<h3>11.3 双地址模式：cardinal 与 ordinal/taproot</h3>
+<p>最佳实践是把资金分成两类地址：</p>
+<table>
+<tr><th>地址类型</th><th>用途</th><th>建议</th></tr>
+<tr><td>cardinal（bc1q 等）</td><td>日常收付款、找零</td><td>默认地址</td></tr>
+<tr><td>ordinal / taproot（bc1p）</td><td>接收、保管铭文与 Runes</td><td>单独标签，不自动用于找零</td></tr>
+</table>
+<pre><code>// 双地址模式：生成两种接收地址
+function deriveAddresses(xpub, index, network) {
+  // cardinal：BIP84 P2WPKH
+  const cardinal = bitcoin.payments.p2wpkh({
+    pubkey: bip84.derivePath(`0/${index}`).publicKey, network });
+  // ordinal：BIP86 P2TR（x-only）
+  const ordinal = bitcoin.payments.p2tr({
+    internalPubkey: bip86.derivePath(`0/${index}`).publicKey.slice(1), network });
+  return { cardinal: cardinal.address, ordinal: ordinal.address };
+}
+</code></pre>
+<h3>11.4 coin selection 改造示例</h3>
+<p>把「铭文感知」落到代码，最直接的是在选币时加一个过滤：</p>
+<pre><code>// 选币时排除含铭文的 UTXO（示意）
+function selectCoins(utxos, targetSat, opts = {}) {
+  const candidates = utxos.filter((u) => {
+    if (opts.excludeInscribed &amp;&amp; u.inscription) return false; // 含铭文则跳过
+    if (opts.excludeRunes &amp;&amp; u.rune) return false;             // 含 rune 则跳过
+    return true;
+  });
+  // 贪心：先选最小能凑够的（或按手续费最优）
+  candidates.sort((a, b) => a.value - b.value);
+  let sum = 0, picked = [];
+  for (const u of candidates) {
+    picked.push(u); sum += u.value;
+    if (sum &gt;= targetSat) break;
+  }
+  return { picked, change: sum - targetSat };
+}
+</code></pre>
+<div class="tip"><b>工程清单：</b>① 接入 ord / mempool 索引器获取铭文标注；② coin selection 增加 <code>excludeInscription</code> 参数；③ 对含 rune 的 UTXO 同理处理；④ 在所有「发送」界面做铭文转移警告；⑤ 备份时一并导出 ordinal 私钥路径（BIP86）。</div>
+<h3>11.5 用输出描述符表达 Taproot 收款</h3>
+<p>第二篇学过的 descriptors 在这里直接可用。一个支持 ordinals 的钱包，可以给每个 ordinal 地址配一条 <code>tr(...)</code> 描述符，便于用 Bitcoin Core 的 <code>importdescriptors</code> 建立 watch-only 视图并追踪铭文 UTXO：</p>
+<pre><code># 单密钥 Taproot 描述符（BIP86，x-only 内部公钥）
+tr([fp/86h/0h/0h]tpub.../0/*)#cs
+
+# 带脚本叶（如 CSV 时间锁）的 Taproot（用于高级铭文逻辑）
+tr(KEY,leaf_a)
+
+# 钱包导出时应同时给出 descriptor 与 checksum，便于在其他 Core 节点恢复
+</code></pre>
+<h3>11.6 铭文 UTXO 的「不要动」策略</h3>
+<p>除了在 coin selection 排除，钱包还应在数据库层给 UTXO 打标签，并在任何「最大金额发送」「清空钱包」类操作里自动跳过它们。一个稳妥的存储结构：</p>
+<pre><code>// UTXO 元数据示例（钱包本地存储）
+{
+  txid: "abc...", vout: 0, value: 12000,
+  inscription: { id: "abc...i0", content_type: "image/png", sat: 1900000000 },
+  rune: null,
+  frozen: true          // 默认冻结，需用户显式解冻
+}
+// 发送界面：frozen=true 的 UTXO 不进入预览，除非用户勾选「包含铭文」
+</code></pre>
+<h2 id="s12">12. 实战：用 ord 在 testnet 刻铭文</h2>
+<p><code>ord</code> 是 Ordinals 官方命令行（github.com/ordinals/ord）。下面在 <b>testnet</b> 完整走一遍「刻一张图」的流程（主网同理，只是网络参数和真金白银的区别）。</p>
+<h3>12.1 环境准备</h3>
+<pre><code># 安装 ord（需先装 Rust 工具链）
+cargo install ord
+
+# 准备一个 Bitcoin Core testnet 节点（或 signet），ord 通过 RPC 交互
+# bitcoin.conf 至少包含：
+#   rpcuser=xxx
+#   rpcpassword=yyy
+#   testnet=1
+#   server=1
+#   txindex=1   # 推荐开启，便于索引
+</code></pre>
+<h3>12.2 生成 Taproot 钱包并同步</h3>
+<pre><code># 让 ord 创建/使用自己的钱包（也可指定 --wallet 名）
+ord --cookie-file=&lt;path&gt; -r &lt;rpcurl&gt; wallet create
+
+# 查看接收地址（必须是 bc1p 才能刻铭文）
+ord wallet receive
+
+# 向该 bc1p 地址转入 testnet 币（从测试网水龙头或本地节点 sendtoaddress）
+# 等待确认后同步
+ord wallet balance
+</code></pre>
+<h3>12.3 刻铭文并广播</h3>
+<pre><code># 把一段文本（或图片文件）刻成铭文
+# 方式一：直接传文件
+ord wallet inscribe &lt;my-image.png&gt;
+
+# 方式二：文本
+echo "hello bitcoin ecosystem" &gt; note.txt
+ord wallet inscribe note.txt
+
+# ord 会构造：① _commit 交易（承诺）+ ② _reveal 交易（揭示数据）
+# 自动广播并输出 inscription id，如：&lt;txid&gt;i0
+# 用以下命令查看
+ord wallet inscriptions
+</code></pre>
+<h3>12.4 在钱包里验证铭文 UTXO 状态</h3>
+<p>刻完后，可以用 Bitcoin Core RPC 看该 inscription 落在哪个 UTXO 上，并确认它带了 witness 数据：</p>
+<pre><code># 在 Bitcoin Core 侧查看 reveal 交易的 witness
+bitcoin-cli getrawtransaction &lt;reveal_txid&gt; true
+# 观察 vin[0].txinwitness 里是否含 "ord" / 数据分片
+
+# 用 ord 自身解析
+ord decode &lt;reveal_txid&gt;
+</code></pre>
+<div class="exercise"><b>练习：</b>刻完后在 mempool.space 的 testnet 浏览器里搜索你的 inscription id，确认 witness 数据可见。再用本篇 11.3 的双地址代码，验证该 inscription 所在的 UTXO 若被普通转账花费会发生什么。</div>
+<h2 id="s13">13. BTCfi 风险与工程清单</h2>
+<p>把 BTC 投入生态协议前，钱包有义务把风险讲清楚。下表按「信任假设强度」排序，越往上越接近比特币原生安全。</p>
+<table>
+<tr><th>方案</th><th>主要风险</th><th>钱包应做</th></tr>
+<tr><td>主链自托管</td><td>私钥丢失/泄露</td><td>助记词备份、硬件签名</td></tr>
+<tr><td>闪电网络</td><td>通道对手方离线、被罚没</td><td>通道备份(SCB)、流动性提示</td></tr>
+<tr><td>Liquid</td><td>联邦作恶/冻结</td><td>标注为托管侧链资产</td></tr>
+<tr><td>Stacks/sBTC</td><td>签名者联盟风险</td><td>区分 sBTC 与主链 BTC</td></tr>
+<tr><td>Ordinals/BRC-20/Runes</td><td>索引器分歧、UTXO 损毁</td><td>铭文感知、转移警告</td></tr>
+<tr><td>RGB</td><td>客户端状态丢失</td><td>独立 stash 备份</td></tr>
+<tr><td>Babylon 质押</td><td>时间锁期内不可动用</td><td>清晰的解质押等待提示</td></tr>
+<tr><td>BitVM</td><td>早期未成熟</td><td>暂仅作认知，谨慎集成</td></tr>
+</table>
+<h3>13.1 通用安全原则</h3>
+<ul>
+<li><b>最小暴露</b>：默认只用主链自托管，生态功能做成可关闭的「高级模式」。</li>
+<li><b>明确标注</b>：每个非 BTC 余额都注明「由谁托管/由谁解释」。</li>
+<li><b>不可逆提醒</b>：铭文转移、质押锁定都是不可逆或高成本操作，必须二次确认。</li>
+<li><b>备份完整</b>：生态私钥、stash、通道 db、blinding key 都要纳入备份流程。</li>
+</ul>
+<div class="note"><b>如何读这张表：</b>它只给「最小支持」方向，不是完整方案。每个方案的安全边界请回到对应小节细读，切勿把它当成「开箱即用」的承诺。</div>
+<div class="table">
+<table>
+<tr><th>如果你的用户想要…</th><th>推荐方案</th><th>钱包最小支持</th></tr>
+<tr><td>买咖啡/小额即时付</td><td>闪电网络</td><td>通道管理 + 路由</td></tr>
+<tr><td>隐私更强的转账</td><td>Liquid</td><td>侧链地址 + 盲化备份</td></tr>
+<tr><td>在 BTC 上写合约</td><td>Stacks / sBTC</td><td>STX 地址 + 合约调用</td></tr>
+<tr><td>收藏品/NFT</td><td>Ordinals</td><td>bc1p + 铭文感知</td></tr>
+<tr><td>发行同质化代币</td><td>Runes（优先于 BRC-20）</td><td>edict 构造 + 索引器</td></tr>
+<tr><td>链下资产/稳定币</td><td>RGB</td><td>stash 存储 + 验证</td></tr>
+<tr><td>赚取 BTC 收益</td><td>Babylon 质押</td><td>时间锁构造 + 监控</td></tr>
+</table>
+</div>
+<div class="checklist"><b>上线前自检：</b>
+<ul>
+<li>所有非主链资产都在 UI 标注信任来源与风险等级。</li>
+<li>铭文/Rune UTXO 默认不被 coin selection 选中。</li>
+<li>每条链（L1/L2/侧链）使用独立派生路径，避免地址复用混淆。</li>
+<li>提供「仅查看」(watch-only) 与「硬件签名」两种模式。</li>
+<li>对外交互（RPC、索引器、节点）地址与证书可配置、可审计。</li>
+</ul>
+</div>
+<h2 id="s14">14. 经典资源链接表</h2>
+<table>
+<tr><th>主题</th><th>资源</th><th>地址</th></tr>
+<tr><td>闪电网络规范</td><td>Lightning BOLTs</td><td>github.com/lightning/bolts</td></tr>
+<tr><td>闪电网络模拟</td><td>Polar</td><td>github.com/jamaljsr/polar</td></tr>
+<tr><td>Liquid</td><td>官方文档</td><td>docs.liquid.net</td></tr>
+<tr><td>Stacks / Clarity</td><td>开发者文档</td><td>docs.stacks.co</td></tr>
+<tr><td>Clarinet 工具</td><td>合约本地开发</td><td>github.com/hirosystems/clarinet</td></tr>
+<tr><td>sBTC</td><td>官方站</td><td>docs.stacks.co/sbtc</td></tr>
+<tr><td>Ordinals</td><td>协议与 ord</td><td>docs.ordinals.com / github.com/ordinals/ord</td></tr>
+<tr><td>Runes</td><td>规范</td><td>github.com/ordinals/runes</td></tr>
+<tr><td>RGB</td><td>客户端验证资产</td><td>rgb.tech</td></tr>
+<tr><td>Babylon</td><td>BTC 质押</td><td>babylonlabs.io</td></tr>
+<tr><td>BitVM</td><td>乐观计算</td><td>bitvm.org</td></tr>
+<tr><td>索引器/浏览器</td><td>mempool.space</td><td>mempool.space</td></tr>
+</table>
+<div class="quote">「比特币主链负责最终性，生态负责可能性。」作为钱包开发者，你的职责是在把「可能性」交到用户手上时，让他们清楚每一份信任的代价。</div>
+<h2 id="s15">15. 本章小结与下一步</h2>
+<p>本篇我们把视野从「主链脚本」扩展到了整个比特币生态。请确认你能独立回答以下问题，再进入下一篇：</p>
+<ul>
+<li>闪电网络用哪两个核心机制（通道 + HTLC）把链下支付「锚定」回链上最终性？</li>
+<li>Liquid、Stacks、RGB 三者的信任模型分别建立在什么之上？</li>
+<li>Ordinals 把数据写进交易的哪一部分？为什么必须用 Taproot（bc1p）地址？</li>
+<li>为什么说 BRC-20 是「索引器共识」而非「协议共识」？这对钱包展示意味着什么？</li>
+<li>Runes 相比 BRC-20 在 UTXO 模型上有什么改进？</li>
+<li>钱包做「铭文感知」需要哪三步（标注 / 排除 / 警告）？</li>
+<li>Babylon 质押为何要求用户理解「时间锁期内资金不可动用」？</li>
+<li>BitVM 用的是哪种验证思路（乐观 + 欺诈证明），它当前处于什么阶段？</li>
+</ul>
+<div class="checklist"><b>工程落地最小集：</b>
+<ul>
+<li>支持 bc1p（BIP86）地址生成与解析。</li>
+<li>接入至少一个索引器，标注 inscription / rune UTXO。</li>
+<li>coin selection 默认排除被标注的 UTXO，并提供冻结开关。</li>
+<li>对所有生态资产在 UI 标注信任来源与风险等级。</li>
+<li>把闪电、侧链、L2 的私钥/状态纳入统一备份流程。</li>
+</ul>
+</div>
+<div class="tip"><b>一句话收尾：</b>比特币生态的繁荣，本质上是「在不变的主链上，叠加可变的信任层」。你作为钱包开发者，扮演的正是「信任翻译器」——把每一层复杂的信任假设，翻译成用户能看懂、能控制的选择。</div>
+<div class="note"><b>通往以太坊：</b>下一篇我们将离开比特币的 UTXO 世界，进入账户模型（Account Model）与 EVM 智能合约生态。你会发现很多「比特币生态想做而受限」的事，在以太坊上用合约天然可做——但代价是更高的信任复杂度与不同的安全模型。带着本篇建立的「信任边界」直觉去读，会理解得更深。</div>
+<div class="exercise"><b>综合练习：</b>选一个你最看好的生态方案，写一段 200 字的产品说明，明确告诉用户「我把你的资产托付给了谁、什么情况下可能损失、你该怎么备份」。能把这一步说清楚的钱包，才配得上用户的信任。</div>
+<div class="pager">
+<a href="02-btc-script.html"><b>上一篇</b>← BTC 篇 II：脚本、PSBT 与交易编程深入</a>
+<a class="next" href="04-eth.html"><b>下一篇</b>BTC 篇扩展：以太坊与 EVM 钱包开发 →</a>
+</div>
+</main></body></html>

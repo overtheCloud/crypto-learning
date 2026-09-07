@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC 篇 I：概念与钱包开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html" class="cur">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">BTC 篇 I：概念与钱包开发</span><span class="chain chain-btc">BTC</span></header>
+<main class="doc">
+<h1>BTC 篇 I：概念与钱包开发</h1>
+<p class="subtitle">从《比特币白皮书》(Satoshi Nakamoto, bitcoin.org/bitcoin.pdf) 到能跑通的测试网转账代码。主要参考：《精通比特币 Mastering Bitcoin》开源版 github.com/bitcoinbook/bitcoinbook、BIP 索引 github.com/bitcoin/bips、bitcoinjs-lib v6 官方文档。</p>
+<div class="goals"><b>本章目标：</b>
+<ol>
+<li>说清「双花问题」为什么是电子现金的核心难题，以及 PoW + 最长链是如何用经济成本替代可信第三方的。</li>
+<li>用自己的话复述白皮书 9 个章节的论证链条，不看提示就能画出「交易 → 区块 → 链」的数据结构图。</li>
+<li>彻底掌握 UTXO 模型：能手工算出一笔交易的输入、输出、找零和手续费。</li>
+<li>逐字段解剖一笔真实交易（txid / vin / vout / scriptSig / scriptPubKey / witness），并能区分 4 类地址格式与其脚本模板。</li>
+<li>用 Node.js 独立完成：生成 HD 钱包 bc1q 地址 → 查询 UTXO → 用 PSBT 构建并签名一笔 P2WPKH 转账 → 广播到 testnet。</li>
+</ol>
+</div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 货币、信任与双花问题</a>
+<a href="#s2">2. 白皮书 9 章逐节精读</a>
+<a href="#s3">3. PoW、最长链与挖矿经济学</a>
+<a href="#s4">4. UTXO 模型：比特币的会计系统</a>
+<a href="#s5">5. 交易结构逐字段解剖</a>
+<a href="#s6">6. 地址演进与脚本模板对照</a>
+<a href="#s7">7. 区块结构、Merkle 树与 SPV</a>
+<a href="#s8">8. 确认数、链重组与最终性</a>
+<a href="#s9">9. 手续费市场：sat/vB 竞价</a>
+<a href="#s10">10. 开发环境准备（Node.js + bitcoinjs-lib v6）</a>
+<a href="#s11">11. 代码①：助记词 → HD 派生 → bc1q 地址</a>
+<a href="#s12">12. 代码②：查询地址 UTXO（mempool.space API）</a>
+<a href="#s13">13. 代码③：PSBT 构建并广播 P2WPKH 转账</a>
+<a href="#s14">14. WIF 私钥导入与导出</a>
+<a href="#s15">15. 2-of-3 多签地址（P2SH 与 P2WSH）</a>
+<a href="#s16">16. 常用 API 服务对照与自建节点</a>
+</div>
+<h2 id="s1">1. 货币、信任与双花问题</h2>
+<h3>1.1 电子现金的三个必要属性</h3>
+<p>在动手写代码之前，必须先想清楚比特币到底解决了什么问题。假设你要设计一种「电子现金」，它至少需要三个属性：</p>
+<table>
+<tr><th>属性</th><th>含义</th><th>传统方案怎么做</th></tr>
+<tr><td>可验证所有权</td><td>只有拥有者能花掉这笔钱</td><td>银行核对账户密码 / 签名</td></tr>
+<tr><td>防伪造</td><td>不能凭空造出余额</td><td>央行垄断发行 + 银行账本</td></tr>
+<tr><td>防重复花费</td><td>同一笔钱不能花两次</td><td>银行维护唯一账本，实时扣减</td></tr>
+</table>
+<p>前两个属性用密码学就能解决：非对称加密（公钥私钥）天然提供「可验证所有权」——用私钥签名，任何人用公钥验签；防伪造可以用一套明确的发行规则约束。<b>唯一的难点是第三个：防重复花费。</b></p>
+<h3>1.2 什么是双花（Double Spending）</h3>
+<p>物理现金天生防双花：一张纸币交给对方后，你手里就没有了，「转移」和「删除」是同一个原子动作。但数字信息的本质是<b>可复制</b>。假设 Alice 有一个签名过的数据包 <code>"我把 1 币转给 Bob"</code>，她完全可以再造一个 <code>"我把同一枚 1 币转给 Carol"</code>，两个数据包的签名都完全有效。</p>
+<div class="warn"><b>双花的本质：</b>数字签名只能证明「这条消息是我发出的」，无法证明「这是我第一次花这笔钱」。签名解决了授权，但解决不了顺序。要判断哪笔先发生，就必须有一个全网公认的<b>时间顺序</b>。</div>
+<h3>1.3 中心化方案与它的代价</h3>
+<p>传统方案是引入一个可信第三方（银行 / 支付公司）：所有交易都发给它，由它维护唯一账本、决定先后顺序。这个方案有效，但代价是：</p>
+<ul>
+<li><b>单点信任</b>：第三方可以冻结、审查、篡改，也可能被攻击或倒闭。</li>
+<li><b>不可逆性缺失</b>：由于支付可被撤销，商家必须索取更多客户信息、承担欺诈风险，小额支付成本被抬高。</li>
+<li><b>成本与延迟</b>：跨境结算需要多层中介，T+1、T+3 结算是常态。</li>
+</ul>
+<div class="quote">「商业活动在互联网上几乎完全依赖金融机构作为可信第三方来处理电子支付……需要的是一个基于密码学证明而非信任的电子支付系统。」——《比特币白皮书》引言</div>
+<h3>1.4 比特币的思路：把「谁先发生」变成一场公开竞赛</h3>
+<p>比特币的核心创新不是数字签名（1970 年代就有），也不是电子货币（DigiCash、b-money、Hashcash 都更早），而是：<b>在没有身份、没有准入、参与者可自由进出且可能作恶的网络中，让所有诚实节点自发地对「交易的先后顺序」达成一致。</b></p>
+<p>做法可以概括为四层：</p>
+<div class="grid c2">
+<div class="card"><h4>① 广播 + 时间戳链</h4><p>所有交易公开广播。把交易打包成「区块」，每个区块包含上一个区块的哈希，形成不可回溯修改的链条。</p></div>
+<div class="card"><h4>② 工作量证明（PoW）</h4><p>生成区块必须消耗真实算力（找到满足难度的哈希）。修改历史需要重做之后所有区块的工作量。</p></div>
+<div class="card"><h4>③ 最长链规则</h4><p>节点始终认可累积工作量最大的那条链。「投票权」按算力而非按 IP 数量计算，从而抵抗女巫攻击。</p></div>
+<div class="card"><h4>④ 激励相容</h4><p>出块奖励 + 手续费让矿工诚实挖矿比攻击更赚钱。安全性最终由经济理性保证。</p></div>
+</div>
+<h2 id="s2">2. 白皮书 9 章逐节精读</h2>
+<p>白皮书正文只有 8 页 9 节 + 结论，是理解比特币最高性价比的材料。下面逐节浓缩要点，建议对照原文阅读。</p>
+<h3>2.1 Introduction（引言）</h3>
+<p>提出问题：互联网商业依赖金融机构做可信第三方，导致交易可逆、成本高、需要过度收集信息。目标是构建<b>基于密码学证明而非信任</b>的点对点支付系统。方案的关键是一个使用点对点分布式时间戳服务器生成的、按时间顺序排列的交易记录的计算证明。</p>
+<h3>2.2 Transactions（交易）</h3>
+<p>定义「电子硬币」= 一条数字签名链。上一任所有者对「上一笔交易的哈希 + 下一任所有者的公钥」签名，附在币的后面。收款人可以验证整条签名链的所有权。</p>
+<div class="note"><b>关键洞察：</b>签名链能证明所有权转移的合法性，但<b>收款人无法确认前任是否已经把同一枚币花给了别人</b>。所以必须让所有交易公开、并让所有人对「哪笔先到」达成共识。这句话直接推导出后面所有章节的必要性。</div>
+<h3>2.3 Timestamp Server（时间戳服务器）</h3>
+<p>做法：把一批数据的哈希打上时间戳并广泛发布，证明这些数据在该时刻已存在。每个时间戳把前一个时间戳纳入自己的哈希中，形成链条——后面的时间戳强化前面的时间戳。这就是「区块链」的雏形。</p>
+<h3>2.4 Proof-of-Work（工作量证明）</h3>
+<p>为了在 P2P 网络中实现分布式时间戳，采用类似 Hashcash 的 PoW：在区块中加入一个 nonce，不断递增直到区块哈希的前若干位为 0。特点：</p>
+<ul>
+<li><b>难求易验</b>：找到解需要平均尝试 2^n 次，验证只需一次哈希。</li>
+<li><b>不可撤销的成本</b>：区块一旦确定，修改它必须重做它以及之后所有区块的 PoW。</li>
+<li><b>一 CPU 一票</b>：多数决策按算力计，避免「一 IP 一票」被伪造身份操纵。</li>
+<li><b>难度自适应</b>：难度按移动平均调整，补偿硬件进步与算力变化，维持恒定出块速度。</li>
+</ul>
+<h3>2.5 Network（网络）</h3>
+<p>节点运行步骤（原文 6 步，务必记住）：</p>
+<ol>
+<li>新交易向全网广播。</li>
+<li>每个节点把新交易收集进一个区块。</li>
+<li>每个节点为自己的区块寻找 PoW 解。</li>
+<li>找到解后向全网广播该区块。</li>
+<li>节点只在区块内所有交易有效且未被双花时接受该区块。</li>
+<li>节点通过在该区块哈希之上继续构建下一个区块，来表达对它的接受。</li>
+</ol>
+<p>节点始终认为最长链是正确的，并持续在其上工作。若同时收到两个版本，先在收到的那个上工作，同时保留另一个分支；一旦某分支变长就切换过去。丢失的区块广播是可容忍的——节点收到下一个区块发现缺失时会主动请求。</p>
+<h3>2.6 Incentive（激励）</h3>
+<p>区块的第一笔交易创建新币，归出块者所有（即 coinbase 交易）。这既是发行机制（类似金矿开采投入资源来增加流通量），也是让节点保持诚实的激励。当发行结束后，激励完全由交易手续费构成。</p>
+<div class="tip"><b>经济学论证：</b>如果攻击者掌握了超过半数算力，他可以选择偷回自己的付款，或者用同样的算力老老实实挖矿获得新币。白皮书认为「按规则玩」通常更有利可图，因为攻击行为会摧毁他自身财富所依赖的系统价值。</div>
+<h3>2.7 Reclaiming Disk Space（回收磁盘空间）</h3>
+<p>一旦某个区块中的交易被足够多的后续区块掩埋，可以丢弃已花费的交易以节省空间。做法是把交易组织成 <b>Merkle 树</b>，只需保留树根，内部节点可以剪掉。区块头仅 80 字节，即便每 10 分钟一个区块，一年也只有约 4.2 MB 的区块头数据。</p>
+<h3>2.8 Simplified Payment Verification（简化支付验证，SPV）</h3>
+<p>轻客户端无需保存完整区块链：只保留最长链的区块头，向网络请求某交易所在的 Merkle 分支，即可验证该交易已被打包。轻客户端不能自己验证交易合法性，但看到网络节点已接受它、且后续有区块继续追加，即可获得较高置信度。</p>
+<h3>2.9 Combining and Splitting Value（价值的合并与拆分）</h3>
+<p>为避免为每一分钱单独建立交易，交易允许<b>多输入多输出</b>：多个输入合并小额资金，输出通常是两个——一个给收款方，一个作为<b>找零</b>返还给自己。这一节直接定义了 UTXO 的用法。</p>
+<h3>2.10 Privacy（隐私）</h3>
+<p>传统模式靠限制访问账本来保护隐私；比特币的账本是公开的，隐私来自<b>把公钥与真实身份解耦</b>（假名性）。建议：每笔交易使用新的密钥对，避免地址复用把多笔交易关联到同一主体。多输入交易仍会不可避免地暴露「这些输入属于同一所有者」。</p>
+<h3>2.11 Calculations（计算）</h3>
+<p>用赌徒破产问题建模攻击者追赶诚实链的概率。结论：只要攻击者算力占比 q &lt; 0.5，其成功追上 z 个确认的概率随 z 指数级下降。这正是「等 6 个确认」的理论来源。</p>
+<table>
+<tr><th>攻击者算力 q</th><th>z=0</th><th>z=3</th><th>z=6</th><th>z=10</th></tr>
+<tr><td>10%</td><td>100%</td><td>0.13%</td><td>0.00024%</td><td>约 1e-9</td></tr>
+<tr><td>30%</td><td>100%</td><td>13.2%</td><td>1.7%</td><td>0.24%</td></tr>
+<tr><td>45%</td><td>100%</td><td>52.4%</td><td>34.0%</td><td>20.6%</td></tr>
+</table>
+<div class="note"><b>读表方法：</b>数值为「攻击者最终反超诚实链的概率」（白皮书附录数量级）。算力占比越高，等待更多确认的边际收益越小；接近 50% 时任何确认数都不能提供实用安全性。</div>
+<h2 id="s3">3. PoW、最长链与挖矿经济学</h2>
+<h3>3.1 挖矿到底在算什么</h3>
+<p>挖矿 = 反复对 80 字节的<b>区块头</b>做双重 SHA-256，直到结果小于目标值 target。区块头字段固定，矿工可改动的主要是 nonce（4 字节）、时间戳、以及 coinbase 交易中的 extranonce（改动它会改变 Merkle 根）。</p>
+<pre><code># 挖矿条件（概念表达）
+SHA256(SHA256(block_header)) &lt; target
+
+# target 与难度 difficulty 的关系
+difficulty = difficulty_1_target / current_target
+
+# 期望尝试次数
+expected_hashes = 2**256 / (target + 1)
+</code></pre>
+<p>下面是一个可以直接运行的极简 PoW 演示，帮助你在本机上「感受」难度的指数增长：</p>
+<pre><code>// mini-pow.js —— 用 Node.js 内置 crypto 演示工作量证明
+// 运行：node mini-pow.js
+const crypto = require('crypto');
+
+// 双重 SHA-256，这是比特币区块头与 txid 使用的哈希函数
+function hash256(buf) {
+  const h1 = crypto.createHash('sha256').update(buf).digest();
+  return crypto.createHash('sha256').update(h1).digest();
+}
+
+// 模拟"挖矿"：找到使哈希十六进制前缀有 zeroHexDigits 个 0 的 nonce
+function mine(dataStr, zeroHexDigits) {
+  const prefix = '0'.repeat(zeroHexDigits);   // 目标前缀，例如 '00000'
+  const t0 = Date.now();
+  let nonce = 0;
+  while (true) {
+    // 把业务数据与 nonce 拼接后哈希，等价于「区块头 + nonce」
+    const digest = hash256(Buffer.from(dataStr + nonce)).toString('hex');
+    if (digest.startsWith(prefix)) {
+      const ms = Date.now() - t0;
+      return { nonce, digest, ms, hashRate: Math.round(nonce / (ms / 1000)) };
+    }
+    nonce++;   // 唯一能做的事就是穷举，这就是"工作量"
+  }
+}
+
+// 难度每增加 1 个十六进制 0，期望尝试次数就乘以 16
+for (let d = 1; d &lt;= 6; d++) {
+  const r = mine('height=800000|prev=abc123|merkle=def456|', d);
+  console.log('难度(前导0)=' + d, '| nonce=' + r.nonce, '| 耗时=' + r.ms + 'ms',
+              '| 算力≈' + r.hashRate + ' H/s\n  hash=' + r.digest);
+}
+</code></pre>
+<div class="tip"><b>动手体会：</b>运行上面代码，把难度从 5 提到 7，耗时大约会变成 256 倍。真实比特币网络当前难度对应的前导零远超 19 个十六进制位，全网算力在 EH/s（10^18 H/s）量级——这就是「不可篡改」的物理基础。</div>
+<h3>3.2 难度调整</h3>
+<table>
+<tr><th>规则</th><th>取值</th><th>说明</th></tr>
+<tr><td>目标出块间隔</td><td>10 分钟</td><td>兼顾传播延迟与确认速度</td></tr>
+<tr><td>调整周期</td><td>每 2016 个区块</td><td>理想耗时 2016 × 10 分钟 = 两周</td></tr>
+<tr><td>调整公式</td><td>new_target = old_target × (实际耗时 / 期望耗时)</td><td>实际快于两周则难度上调</td></tr>
+<tr><td>单次调整上限</td><td>4 倍 / 1/4 倍</td><td>防止难度剧烈震荡被操纵</td></tr>
+</table>
+<div class="warn"><b>著名坑点（off-by-one）：</b>难度计算使用的是周期内第一个和最后一个区块的时间戳之差，实际只覆盖 2015 个间隔而非 2016 个，这个早期实现 bug 一直保留至今（改动会造成硬分叉），使实际出块间隔略快于 10 分钟。</div>
+<h3>3.3 减半与总量</h3>
+<p>初始出块奖励 50 BTC，每 210000 个区块（约 4 年）减半，用整数运算实现：</p>
+<pre><code>// halving.js —— 计算任意高度的出块奖励与累计发行量
+function subsidy(height) {
+  const halvings = Math.floor(height / 210000);
+  if (halvings &gt;= 64) return 0;          // 64 次减半后归零
+  // 5,000,000,000 聪 = 50 BTC，用位移实现整数减半（与 Bitcoin Core 一致）
+  return Math.floor(5000000000 / Math.pow(2, halvings));
+}
+
+function totalSupplyAt(height) {                 // 累计发行量（单位：聪）
+  let total = 0;
+  for (let h = 0; h &lt;= height; h++) total += subsidy(h);
+  return total;
+}
+
+for (const h of [0, 210000, 420000, 630000, 840000, 1050000]) {
+  console.log('高度 ' + h, '| 奖励 = ' + (subsidy(h) / 1e8) + ' BTC',
+              '| 第' + (Math.floor(h / 210000) + 1) + '期');
+}
+console.log('至高度 840000 累计发行 ≈ ' + (totalSupplyAt(840000) / 1e8).toFixed(2) + ' BTC');
+</code></pre>
+<p>总量上限 = 各期奖励 × 210000 求和 ≈ 20999999.98 BTC，通常记作 2100 万枚。最小单位是 <b>聪（satoshi）</b>，1 BTC = 100,000,000 聪。</p>
+<div class="warn"><b>开发铁律：</b>金额计算<b>永远用聪做整数运算</b>，绝不用浮点数表示 BTC。<code>0.1 + 0.2 !== 0.3</code> 这种误差在资金系统里是致命的。bitcoinjs-lib v6 用 number 表示聪（安全整数范围内足够，2100 万 BTC = 2.1e15 聪 &lt; 2^53），v7 改为 bigint。</div>
+<h2 id="s4">4. UTXO 模型：比特币的会计系统</h2>
+<h3>4.1 没有「余额」，只有「未花费的输出」</h3>
+<p>比特币账本里<b>不存在账户余额字段</b>。链上只有一个巨大的集合：UTXO set（Unspent Transaction Output，未花费交易输出）。每个 UTXO 是一张不可分割的「面额不定的电子支票」，包含两个关键信息：</p>
+<ul>
+<li><b>value</b>：金额（单位：聪）。</li>
+<li><b>scriptPubKey</b>：锁定脚本，规定了「满足什么条件才能花掉我」。</li>
+</ul>
+<p>钱包显示的「余额」是客户端算出来的：<code>余额 = 属于我的所有 UTXO 的 value 之和</code>。</p>
+<h3>4.2 输入、输出与找零</h3>
+<p>一笔交易做的事就是：<b>销毁若干旧 UTXO（作为输入），创建若干新 UTXO（作为输出）</b>。铁律有三条：</p>
+<div class="grid c3">
+<div class="card"><h4>① 输入必须整花</h4><p>UTXO 不能部分使用。要花 0.3，但手上只有一个 1.0 的 UTXO，就必须把整个 1.0 花掉。</p></div>
+<div class="card"><h4>② 差额靠找零</h4><p>多出来的钱要新建一个输出转回自己控制的地址，这叫「找零输出（change）」。</p></div>
+<div class="card"><h4>③ 手续费是差额</h4><p>fee = 输入总额 − 输出总额。它不是字段，是<b>算出来的</b>，由矿工在打包时取走。</p></div>
+</div>
+<div class="warn"><b>最经典的新手事故：</b>忘记加找零输出。假设你花掉一个 1 BTC 的 UTXO 只给对方 0.01 BTC，剩下的 0.99 BTC 会全部变成手续费送给矿工，且<b>不可撤销</b>。写转账代码时，找零计算必须有单元测试覆盖。</div>
+<h3>4.3 与银行账户模型对比</h3>
+<table>
+<tr><th>维度</th><th>银行账户 / 以太坊账户模型</th><th>比特币 UTXO 模型</th></tr>
+<tr><td>状态存储</td><td>地址 → 余额（一个可变数字）</td><td>UTXO 集合（一堆不可变的「支票」）</td></tr>
+<tr><td>余额来源</td><td>直接读取字段</td><td>扫描并累加自己的 UTXO</td></tr>
+<tr><td>转账语义</td><td>A 余额 −x，B 余额 +x（读改写）</td><td>销毁旧 UTXO，创建新 UTXO（不可变）</td></tr>
+<tr><td>并发/并行验证</td><td>同账户交易必须串行（有 nonce 顺序）</td><td>不同 UTXO 互不相干，天然可并行验证</td></tr>
+<tr><td>重放保护</td><td>依赖 nonce 递增</td><td>天然免疫：UTXO 花完即消失，无法重放</td></tr>
+<tr><td>隐私</td><td>地址复用，余额公开可查</td><td>可每笔换新地址，但多输入会暴露关联</td></tr>
+<tr><td>状态膨胀</td><td>账户数增长</td><td>UTXO 数增长，粉尘 UTXO 是负担</td></tr>
+<tr><td>编程复杂度</td><td>低（改数字）</td><td>高（要做币选择、找零、费率估算）</td></tr>
+<tr><td>智能合约</td><td>全局共享状态，易写复杂逻辑</td><td>脚本仅约束单个 UTXO 的花费条件</td></tr>
+</table>
+<h3>4.4 币选择（Coin Selection）</h3>
+<p>钱包必须决定「用哪几个 UTXO 凑出这笔付款」，这个算法直接影响手续费和隐私：</p>
+<table>
+<tr><th>策略</th><th>做法</th><th>优点</th><th>缺点</th></tr>
+<tr><td>Largest First</td><td>先用最大的 UTXO</td><td>输入数少，交易体积小</td><td>迅速把大额打碎，隐私差</td></tr>
+<tr><td>Smallest First</td><td>先用最小的</td><td>能清理粉尘 UTXO</td><td>输入多、体积大、费用高</td></tr>
+<tr><td>Branch and Bound</td><td>搜索恰好无需找零的组合（Bitcoin Core 默认）</td><td>省掉找零输出，费用最低、隐私最好</td><td>实现复杂，不总能找到解</td></tr>
+<tr><td>Knapsack / 随机</td><td>随机组合逼近目标额</td><td>实现简单，抗分析</td><td>结果不稳定</td></tr>
+</table>
+<p>币选择的核心难点在于「手续费依赖输入个数，而输入个数又依赖手续费」这个循环依赖。解法是<b>边加输入边重算费用</b>，完整实现见第 13 节的 <code>selectCoins</code>，其判定条件为：</p>
+<pre><code>// 累加法选币的两个终止条件（完整代码见第 13 节）
+const DUST = 294;                                     // P2WPKH 粉尘阈值(聪)
+const feeWithChange = estimateVsize(n, 2) * feeRate;  // 需要找零：2 个输出
+const feeNoChange   = estimateVsize(n, 1) * feeRate;  // 无需找零：1 个输出
+
+// 条件 A：够付款+手续费，但余额产生的找零是粉尘 → 不建找零，差额并入手续费
+if (sum &gt;= target + feeNoChange &amp;&amp; sum &lt; target + feeWithChange + DUST) { /* 无找零 */ }
+
+// 条件 B：够付款+手续费+一个有经济意义的找零 → 建找零输出
+if (sum &gt;= target + feeWithChange + DUST) { change = sum - target - feeWithChange; }
+
+// 恒等式（必须写成断言）：Σ输入 === 付款额 + 找零 + 手续费
+</code></pre>
+<h2 id="s5">5. 交易结构逐字段解剖</h2>
+<h3>5.1 一笔 SegWit 交易的完整字段</h3>
+<pre><code>{
+  "txid": "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
+  "hash": "f4184fc5...",        // = wtxid，SegWit 交易中与 txid 不同
+  "version": 2,                  // 交易版本；version=2 才启用 BIP68 相对时间锁
+  "size": 225,                   // 序列化总字节数（含见证数据）
+  "vsize": 144,                  // 虚拟体积 = ceil(weight / 4)，计费依据
+  "weight": 574,                 // weight = base*3 + total
+  "locktime": 0,                 // 0 = 立即生效；见 CLTV 一节
+  "vin": [{
+    "txid": "0437cd7f...",       // 引用的上一笔交易 ID（即花哪个 UTXO）
+    "vout": 0,                   // 引用其第几个输出（从 0 开始）
+    "scriptSig": { "asm": "", "hex": "" },   // SegWit 输入这里为空
+    "txinwitness": [             // 见证数据：签名 + 公钥
+      "3045022100c2...01",
+      "0250863ad64a87ae8a2fe83c1af1a8403cb53f53e486d8511dad8a04887e5b2352"
+    ],
+    "sequence": 4294967295       // 0xffffffff = 不启用 RBF / 相对时间锁
+  }],
+  "vout": [
+    { "value": 0.00100000,       // 单位 BTC（RPC 返回如此；代码里请一律用聪）
+      "n": 0,
+      "scriptPubKey": { "asm": "0 3f2a...", "hex": "00143f2a...",
+                        "type": "witness_v0_keyhash", "address": "tb1qlu4gp0..." } },
+    { "value": 0.00898000, "n": 1, "scriptPubKey": { "type": "witness_v0_keyhash" } }
+  ]
+}
+</code></pre>
+<h3>5.2 字段逐个解释</h3>
+<table>
+<tr><th>字段</th><th>含义</th><th>开发者必须注意</th></tr>
+<tr><td>txid</td><td>交易标识符 = 双 SHA-256(不含见证数据的序列化)，显示时字节序反转</td><td>API 返回的是「大端显示序」；bitcoinjs 内部 Buffer 是小端。用 <code>Buffer.from(txid,'hex').reverse()</code> 转换</td></tr>
+<tr><td>wtxid</td><td>包含见证数据的哈希</td><td>SegWit 交易 txid ≠ wtxid，这是解决延展性的关键</td></tr>
+<tr><td>version</td><td>交易版本号</td><td>用 CSV 相对时间锁必须 version ≥ 2</td></tr>
+<tr><td>vin[].txid + vout</td><td>合称 outpoint，唯一定位一个 UTXO</td><td>outpoint 是 UTXO 的主键，36 字节</td></tr>
+<tr><td>scriptSig</td><td>解锁脚本（传统交易放签名和公钥）</td><td>SegWit（原生）为空；P2SH-P2WPKH 里放的是 witness program</td></tr>
+<tr><td>txinwitness</td><td>见证数据栈，SegWit 的签名存放处</td><td>计费时按 1/4 权重折算，故 SegWit 更便宜</td></tr>
+<tr><td>sequence</td><td>4 字节，原设计用于交易替换，现用于 RBF 信号和相对时间锁</td><td>&lt; 0xfffffffe 表示允许 RBF（BIP125）</td></tr>
+<tr><td>vout[].value</td><td>输出金额</td><td>低于粉尘阈值的输出会被节点拒绝中继</td></tr>
+<tr><td>scriptPubKey</td><td>锁定脚本，定义花费条件</td><td>「地址」只是它的人类可读编码，链上存的是脚本</td></tr>
+<tr><td>locktime</td><td>最早生效时间：&lt; 5e8 视为区块高度，≥ 5e8 视为 Unix 时间戳</td><td>需至少一个输入 sequence ≠ 0xffffffff 才生效</td></tr>
+<tr><td>vsize / weight</td><td>虚拟体积与权重</td><td>费率单位是 sat/vB，不是 sat/byte</td></tr>
+</table>
+<div class="note"><b>weight 与 vsize 的公式：</b><br>
+<code>weight = base_size × 3 + total_size</code>，其中 base_size 是去掉见证数据的序列化长度，total_size 是含见证数据的长度。<br>
+<code>vsize = ceil(weight / 4)</code>。区块上限是 4,000,000 weight units（约等于 1MB 非见证 + 折算见证）。</div>
+<h3>5.3 coinbase 交易的特殊性</h3>
+<ul>
+<li>每个区块的第一笔交易，只有一个输入，其 outpoint 为全 0 + 0xffffffff。</li>
+<li>scriptSig 位置改为 <b>coinbase 字段</b>（2–100 字节），可任意填内容（创世块里写了泰晤士报标题）。</li>
+<li>输出金额 ≤ 出块补贴 + 区块内所有交易手续费。</li>
+<li><b>成熟期 100 个区块</b>：coinbase 输出必须等 100 个确认后才能花费，防止链重组导致的凭空花费。</li>
+</ul>
+<h2 id="s6">6. 地址演进与脚本模板对照</h2>
+<h3>6.1 为什么会有这么多种地址</h3>
+<p>地址不是账号，而是<b>「锁定脚本」的人类可读编码</b>。比特币的地址格式演进史，本质是脚本模板与编码方式的升级史：从「直接锁公钥」到「锁公钥哈希」（更短、可 pre-quantum 保护），再到「锁任意脚本的哈希」（P2SH，把复杂度转移给花费方），再到 SegWit（修延展性、降费用），最后到 Taproot（Schnorr 签名、脚本树、更好隐私）。</p>
+<h3>6.2 四类主流地址对照表</h3>
+<table>
+<tr><th>类型</th><th>主网前缀</th><th>测试网前缀</th><th>编码</th><th>引入</th><th>特点</th></tr>
+<tr><td>P2PKH</td><td>1...</td><td>m... / n...</td><td>Base58Check</td><td>2009 (原始)</td><td>兼容性最好；体积最大、费用最高</td></tr>
+<tr><td>P2SH</td><td>3...</td><td>2...</td><td>Base58Check</td><td>BIP16, 2012</td><td>多签/嵌套 SegWit 常用；从地址看不出内部脚本</td></tr>
+<tr><td>P2WPKH</td><td>bc1q... (42 字符)</td><td>tb1q...</td><td>Bech32</td><td>BIP141/173, 2017</td><td>原生隔离见证，省约 26% 费用；有校验和纠错</td></tr>
+<tr><td>P2WSH</td><td>bc1q... (62 字符)</td><td>tb1q...</td><td>Bech32</td><td>BIP141/173, 2017</td><td>见证脚本哈希，多签首选</td></tr>
+<tr><td>P2TR</td><td>bc1p... (62 字符)</td><td>tb1p...</td><td>Bech32m</td><td>BIP341/350, 2021</td><td>Schnorr + MAST，密钥路径花费隐私最好</td></tr>
+</table>
+<div class="warn"><b>Bech32 vs Bech32m：</b>SegWit v0（bc1q）用 Bech32，Taproot（bc1p）必须用 <b>Bech32m</b>（BIP350，修正了 Bech32 对末尾字符的校验缺陷）。校验算法不同，钱包如果只实现了 Bech32 就会把 bc1p 地址判为「无效地址」，这是 2021 年后最常见的兼容性 bug。</div>
+<h3>6.3 各类型的脚本模板</h3>
+<pre><code># ① P2PKH —— 地址 1... / m...，hex 前缀 76 a9 14 ... 88 ac
+scriptPubKey:  OP_DUP OP_HASH160 &lt;20字节pubKeyHash&gt; OP_EQUALVERIFY OP_CHECKSIG
+scriptSig:     &lt;签名&gt; &lt;公钥&gt;
+
+# ② P2SH —— 地址 3... / 2...，hex 前缀 a9 14 ... 87
+scriptPubKey:  OP_HASH160 &lt;20字节scriptHash&gt; OP_EQUAL
+scriptSig:     &lt;解锁数据...&gt; &lt;redeemScript序列化&gt;
+
+# ③ P2WPKH（原生隔离见证 v0）—— 地址 bc1q（42 字符），hex 00 14 ...
+scriptPubKey:  OP_0 &lt;20字节pubKeyHash&gt;      scriptSig: （空）
+witness:       &lt;签名&gt; &lt;公钥&gt;
+
+# ④ P2WSH（隔离见证脚本哈希 v0）—— 地址 bc1q（62 字符），hex 00 20 ...
+scriptPubKey:  OP_0 &lt;32字节sha256(witnessScript)&gt;      scriptSig: （空）
+witness:       &lt;解锁数据...&gt; &lt;witnessScript&gt;
+
+# ⑤ P2TR（Taproot v1）—— 地址 bc1p，hex 51 20 ...
+scriptPubKey:  OP_1 &lt;32字节输出公钥&gt;
+witness(密钥路径): &lt;64字节Schnorr签名&gt;
+witness(脚本路径): &lt;参数...&gt; &lt;脚本&gt; &lt;控制块&gt;
+
+# ⑥ P2SH-P2WPKH（嵌套隔离见证，兼容老钱包）—— 地址 3...
+scriptPubKey:  OP_HASH160 &lt;hash160(00 14 pubKeyHash)&gt; OP_EQUAL
+scriptSig:     &lt;00 14 pubKeyHash&gt;      # 把 witness program 塞进 scriptSig
+witness:       &lt;签名&gt; &lt;公钥&gt;
+</code></pre>
+<h3>6.4 HD 钱包的派生路径规范</h3>
+<table>
+<tr><th>BIP</th><th>路径模板</th><th>地址类型</th><th>说明</th></tr>
+<tr><td>BIP44</td><td>m/44'/0'/0'/0/0</td><td>P2PKH (1...)</td><td>最早的多币种标准</td></tr>
+<tr><td>BIP49</td><td>m/49'/0'/0'/0/0</td><td>P2SH-P2WPKH (3...)</td><td>嵌套 SegWit</td></tr>
+<tr><td>BIP84</td><td>m/84'/0'/0'/0/0</td><td>P2WPKH (bc1q)</td><td>原生 SegWit，当前主流</td></tr>
+<tr><td>BIP86</td><td>m/86'/0'/0'/0/0</td><td>P2TR (bc1p)</td><td>Taproot 单签</td></tr>
+</table>
+<p>路径语义：<code>m / purpose' / coin_type' / account' / change / address_index</code>。<code>'</code> 表示硬化派生（hardened，索引 + 2^31），子私钥泄露不会连带暴露兄弟密钥。<code>change=0</code> 是收款链，<code>change=1</code> 是找零链。</p>
+<div class="note"><b>coin_type：</b>比特币主网 = 0，比特币测试网 = 1（BIP44 注册表）。所以严格来讲测试网应使用 <code>m/84'/1'/0'/0/0</code>。本章代码会同时演示两者，实际连测试网请用 coin_type=1。</div>
+<h2 id="s7">7. 区块结构、Merkle 树与 SPV</h2>
+<h3>7.1 区块头 80 字节</h3>
+<table>
+<tr><th>字段</th><th>字节</th><th>说明</th></tr>
+<tr><td>version</td><td>4</td><td>版本 + 软分叉信号位（BIP9）</td></tr>
+<tr><td>prev_block_hash</td><td>32</td><td>父区块头哈希，链条由此形成</td></tr>
+<tr><td>merkle_root</td><td>32</td><td>本区块所有交易的 Merkle 树根</td></tr>
+<tr><td>timestamp</td><td>4</td><td>矿工声明的 Unix 时间（有一定容错区间）</td></tr>
+<tr><td>bits</td><td>4</td><td>难度目标的紧凑编码（nBits）</td></tr>
+<tr><td>nonce</td><td>4</td><td>PoW 随机数</td></tr>
+</table>
+<p>只要 80 字节的区块头就能验证 PoW 和链接关系——这是 SPV 成立的前提。一年约 52560 个区块 × 80 字节 ≈ 4.2 MB。</p>
+<h3>7.2 Merkle 树与 Merkle 证明</h3>
+<p>Merkle 树把 N 笔交易的 txid 两两哈希，逐层向上合并到唯一的根。它提供两个能力：<b>完整性</b>（改任何一笔交易，根就变）和<b>可压缩证明</b>（只需 log2(N) 个哈希即可证明某交易在树中）。</p>
+<pre><code>// merkle.js —— 构建 Merkle 根并生成/验证 Merkle 证明
+const crypto = require('crypto');
+
+const h256 = (b) =&gt;
+  crypto.createHash('sha256').update(crypto.createHash('sha256').update(b).digest()).digest();
+
+// 注意：比特币内部用小端(内部序)哈希做树运算，txid 显示时是反转后的字节序
+function buildMerkle(txidsHexDisplay) {
+  let level = txidsHexDisplay.map(h =&gt; Buffer.from(h, 'hex').reverse());  // 显示序→内部序
+  const tree = [level];
+  while (level.length &gt; 1) {
+    const next = [];
+    for (let i = 0; i &lt; level.length; i += 2) {
+      // 奇数个节点时最后一个与自身配对（比特币特有规则，也是 CVE-2012-2459 的根源）
+      const right = (i + 1 &lt; level.length) ? level[i + 1] : level[i];
+      next.push(h256(Buffer.concat([level[i], right])));
+    }
+    level = next; tree.push(level);
+  }
+  return { root: level[0].reverse().toString('hex'), tree };
+}
+
+// 为第 index 笔交易生成证明路径：每层只需记录"兄弟哈希 + 它在左还是右"
+function merkleProof(tree, index) {
+  const proof = [];
+  let idx = index;
+  for (let d = 0; d &lt; tree.length - 1; d++) {
+    const level = tree[d];
+    const isRight = idx % 2 === 1;
+    const sib = isRight ? idx - 1 : Math.min(idx + 1, level.length - 1);
+    proof.push({ hash: level[sib].toString('hex'), position: isRight ? 'left' : 'right' });
+    idx = Math.floor(idx / 2);
+  }
+  return proof;
+}
+
+// 轻客户端拿证明重算根，与区块头里的 merkle_root 比对
+function verifyProof(txidDisplay, proof, expectedRootDisplay) {
+  let cur = Buffer.from(txidDisplay, 'hex').reverse();
+  for (const s of proof) {
+    const sib = Buffer.from(s.hash, 'hex');
+    cur = s.position === 'left' ? h256(Buffer.concat([sib, cur])) : h256(Buffer.concat([cur, sib]));
+  }
+  return cur.reverse().toString('hex') === expectedRootDisplay;
+}
+
+const txids = ['11', '22', '33', '44', '55'].map(x =&gt; x.repeat(32));   // 5 笔假交易
+const { root, tree } = buildMerkle(txids);
+const proof = merkleProof(tree, 2);
+console.log('Merkle 根 =', root);
+console.log('证明长度 =', proof.length, '(交易总数 =', txids.length, ') | 验证 =',
+            verifyProof(txids[2], proof, root));
+</code></pre>
+<div class="tip"><b>为什么 SPV 有用：</b>假设一个区块有 4096 笔交易，证明某笔交易被包含只需 12 个哈希（384 字节），而不是下载整个区块（可达 1–4 MB）。手机钱包正是靠这个跑起来的。</div>
+<h3>7.3 SPV 的信任边界</h3>
+<table>
+<tr><th>能力</th><th>全节点</th><th>SPV 轻节点</th></tr>
+<tr><td>验证 PoW 与链结构</td><td>✔</td><td>✔（有区块头即可）</td></tr>
+<tr><td>验证交易被打包（Merkle 证明）</td><td>✔</td><td>✔</td></tr>
+<tr><td>验证交易脚本合法性</td><td>✔</td><td>✘（无 UTXO 集）</td></tr>
+<tr><td>检测通胀 / 无效发行</td><td>✔</td><td>✘</td></tr>
+<tr><td>隐私</td><td>本地全量数据，无泄露</td><td>需向对端透露关注的地址（Bloom 过滤器易被指纹化）</td></tr>
+<tr><td>存储需求</td><td>数百 GB</td><td>几十 MB</td></tr>
+</table>
+<div class="note"><b>现代替代方案：</b>BIP157/158 的 <b>Compact Block Filters（Neutrino）</b>让轻客户端下载「区块级过滤器」在本地判断是否相关，避免向服务器暴露地址，隐私显著优于 BIP37 Bloom 过滤器。</div>
+<h2 id="s8">8. 确认数、链重组与最终性</h2>
+<h3>8.1 确认数的含义</h3>
+<p>「N 个确认」= 包含该交易的区块之上又累积了 N−1 个区块。0 确认表示交易只在内存池（mempool）中，随时可能被替换或丢弃。</p>
+<table>
+<tr><th>确认数</th><th>典型场景</th><th>风险评估</th></tr>
+<tr><td>0</td><td>咖啡等极小额、闪电网络入口</td><td>可被 RBF 替换或双花，需额外风控</td></tr>
+<tr><td>1</td><td>小额支付</td><td>约 10 分钟，遭遇 1 块重组概率不可忽略</td></tr>
+<tr><td>3</td><td>中等金额</td><td>常见交易所充值门槛</td></tr>
+<tr><td>6</td><td>大额、行业惯例</td><td>约 1 小时，白皮书计算的安全区</td></tr>
+<tr><td>100</td><td>coinbase 输出解锁</td><td>协议强制</td></tr>
+</table>
+<h3>8.2 链重组（Reorg）与孤块</h3>
+<p>两个矿工几乎同时出块时，网络暂时分叉。下一个区块出现后，较短的分支被抛弃，其中的交易回到内存池等待重新打包，这个过程叫 reorg。</p>
+<div class="warn"><b>钱包/交易所后端必须处理 reorg：</b>
+<ul>
+<li>不要在收到区块时就把充值记为「不可逆到账」；要记录该交易所在的 block hash。</li>
+<li>每次新区块到来时检查父哈希是否与本地记录一致；不一致说明发生 reorg，需要回滚受影响高度的所有入账并重新扫描。</li>
+<li>把「确认数」作为状态机字段持久化，而不是每次请求时临时计算。</li>
+</ul></div>
+<pre><code>// reorg-guard.js —— 后端处理链重组的核心思路（伪实现，含中文注释）
+class DepositTracker {
+  constructor(minConfirm = 6) {
+    this.minConfirm = minConfirm;
+    this.blockIndex = new Map();   // height -&gt; blockHash，本地认知的链
+    this.deposits = new Map();     // txid -&gt; {height, blockHash, status}
+  }
+
+  onNewBlock(height, blockHash, prevHash, tipHeight) {   // 每收到一个新区块头时调用
+    const knownPrev = this.blockIndex.get(height - 1);
+    if (knownPrev &amp;&amp; knownPrev !== prevHash) {            // 父哈希不符 → 发生重组
+      console.warn('检测到链重组，回滚高度 &gt;= ' + (height - 1));
+      this.rollbackFrom(height - 1);
+    }
+    this.blockIndex.set(height, blockHash);
+    this.refreshConfirmations(tipHeight);
+  }
+
+  rollbackFrom(fromHeight) {     // 受影响高度的入账退回 pending，并清理链索引
+    for (const [h] of this.blockIndex) if (h &gt;= fromHeight) this.blockIndex.delete(h);
+    for (const [txid, d] of this.deposits) {
+      if (d.height &gt;= fromHeight) {
+        d.status = 'pending';    // 关键：已确认的入账必须能退回未确认
+        d.height = null; d.blockHash = null;
+        console.warn('入账 ' + txid.slice(0, 12) + '... 因重组回退为 pending');
+      }
+    }
+  }
+
+  refreshConfirmations(tipHeight) {
+    for (const [, d] of this.deposits) {
+      if (d.height == null) continue;
+      const conf = tipHeight - d.height + 1;
+      d.status = conf &gt;= this.minConfirm ? 'confirmed' : 'confirming';
+    }
+  }
+}
+</code></pre>
+<h2 id="s9">9. 手续费市场：sat/vB 竞价</h2>
+<h3>9.1 费率而非总额</h3>
+<p>矿工的区块空间有限（4M weight units），他要最大化收益，所以按<b>单位体积的收益</b>排序打包。因此：</p>
+<div class="grid c2">
+<div class="card"><h4>费率 = 手续费 ÷ vsize</h4><p>单位 sat/vB。付 10000 聪但体积 1000 vB（10 sat/vB）的交易，优先级低于付 3000 聪但体积 150 vB（20 sat/vB）的交易。</p></div>
+<div class="card"><h4>手续费不是字段</h4><p>fee = Σ输入 − Σ输出，隐式存在。构建交易时必须自己精确计算，多算的部分永久归矿工。</p></div>
+</div>
+<h3>9.2 体积估算表（常用输入输出的 vsize）</h3>
+<table>
+<tr><th>组成部分</th><th>约 vsize (vB)</th><th>备注</th></tr>
+<tr><td>交易固定开销</td><td>10.5–11</td><td>version + counts + locktime + segwit marker</td></tr>
+<tr><td>P2PKH 输入</td><td>148</td><td>签名与公钥全额计费</td></tr>
+<tr><td>P2SH-P2WPKH 输入</td><td>91</td><td>嵌套 SegWit</td></tr>
+<tr><td>P2WPKH 输入</td><td>68</td><td>见证数据 1/4 折算</td></tr>
+<tr><td>P2TR 密钥路径输入</td><td>57.5</td><td>Schnorr 签名 64 字节，最省</td></tr>
+<tr><td>P2PKH 输出</td><td>34</td><td></td></tr>
+<tr><td>P2SH 输出</td><td>32</td><td></td></tr>
+<tr><td>P2WPKH 输出</td><td>31</td><td></td></tr>
+<tr><td>P2WSH / P2TR 输出</td><td>43</td><td>32 字节承诺</td></tr>
+<tr><td>OP_RETURN 输出</td><td>9 + 数据长度</td><td>最多 80 字节标准数据</td></tr>
+</table>
+<pre><code>// fee.js —— 费率估算：拉取推荐费率并计算不同地址类型的成本差异
+const VSIZE = {
+  overhead: 11,
+  in:  { p2pkh: 148, 'p2sh-p2wpkh': 91, p2wpkh: 68, p2tr: 57.5 },
+  out: { p2pkh: 34, p2sh: 32, p2wpkh: 31, p2wsh: 43, p2tr: 43 }
+};
+
+function estimateFee({ inputs, outputs, feeRate }) {
+  let vsize = VSIZE.overhead;
+  for (const t of inputs)  vsize += VSIZE.in[t];
+  for (const t of outputs) vsize += VSIZE.out[t];
+  vsize = Math.ceil(vsize);
+  return { vsize, fee: Math.ceil(vsize * feeRate) };
+}
+
+(async () =&gt; {
+  // 返回 {fastestFee, halfHourFee, hourFee, economyFee, minimumFee}
+  const res = await fetch('https://mempool.space/testnet/api/v1/fees/recommended');
+  const rates = await res.json();
+  console.log('推荐费率(sat/vB) =', rates);
+
+  // 对比：同为 1 输入 2 输出，不同地址类型的费用差距
+  const cases = [
+    ['传统 P2PKH', ['p2pkh'], ['p2pkh', 'p2pkh']],
+    ['嵌套 SegWit', ['p2sh-p2wpkh'], ['p2sh', 'p2sh']],
+    ['原生 SegWit', ['p2wpkh'], ['p2wpkh', 'p2wpkh']],
+    ['Taproot', ['p2tr'], ['p2tr', 'p2tr']]
+  ];
+  for (const [name, ins, outs] of cases) {
+    const r = estimateFee({ inputs: ins, outputs: outs, feeRate: rates.halfHourFee });
+    console.log(name.padEnd(14), 'vsize=' + String(r.vsize).padStart(4), 'fee=' + r.fee + ' 聪');
+  }
+})();
+</code></pre>
+<div class="note"><b>Node.js 版本要求：</b>上面使用了全局 <code>fetch</code>，需要 Node.js 18+。若使用较老版本，请 <code>npm i node-fetch</code> 并 <code>const fetch = (...a) =&gt; import('node-fetch').then(m =&gt; m.default(...a));</code>。</div>
+<h3>9.3 粉尘（Dust）阈值</h3>
+<p>如果一个输出的金额低于「花掉它所需的手续费」，它就是经济上无意义的粉尘。Bitcoin Core 默认以 3 sat/vB 计算：P2PKH 输出阈值约 546 聪，P2WPKH 约 294 聪。低于阈值的输出会被节点判为非标准交易而拒绝中继。</p>
+<h2 id="s10">10. 开发环境准备（Node.js + bitcoinjs-lib v6）</h2>
+<h3>10.1 安装依赖</h3>
+<pre><code># 建议 Node.js 18 或 20 LTS
+node -v
+
+mkdir btc-wallet-demo &amp;&amp; cd btc-wallet-demo
+npm init -y
+
+# 核心依赖
+npm i bitcoinjs-lib@6 bip39 bip32 tiny-secp256k1 ecpair
+
+# 可选：币选择与 PSBT 辅助
+npm i coinselect
+</code></pre>
+<table>
+<tr><th>包</th><th>作用</th></tr>
+<tr><td>bitcoinjs-lib</td><td>交易构建、脚本、地址编码、PSBT 核心库</td></tr>
+<tr><td>bip39</td><td>助记词 ↔ 种子（BIP39）</td></tr>
+<tr><td>bip32</td><td>HD 密钥派生（BIP32），v3+ 需工厂函数注入曲线实现</td></tr>
+<tr><td>tiny-secp256k1</td><td>secp256k1 椭圆曲线运算的底层实现（WASM/native）</td></tr>
+<tr><td>ecpair</td><td>单个密钥对的封装（WIF 导入导出、签名）</td></tr>
+</table>
+<h3>10.2 v6 的重大变化：工厂函数注入</h3>
+<div class="warn"><b>版本陷阱：</b>bitcoinjs-lib v5 及之前自带 ECC 实现并导出 <code>bitcoin.ECPair</code> 与 <code>bitcoin.bip32</code>。<b>v6 把椭圆曲线实现外置</b>，你必须自己注入 <code>tiny-secp256k1</code>。网上大量老教程的 <code>bitcoin.ECPair.makeRandom()</code> 在 v6 会直接报 <code>undefined</code>。</div>
+<pre><code>// setup.js —— v6 标准初始化模板，后面所有代码都基于此
+const bitcoin = require('bitcoinjs-lib');
+const ecc = require('tiny-secp256k1');              // 椭圆曲线底层实现
+const { BIP32Factory } = require('bip32');          // v6: 必须用工厂函数
+const ECPairFactory = require('ecpair').default;    // 注意 .default（CJS 互操作）
+
+// 把 ecc 注入两个工厂，得到可用的 bip32 / ECPair
+const bip32 = BIP32Factory(ecc);
+const ECPair = ECPairFactory(ecc);
+
+// Taproot（bc1p）相关功能必须先初始化 ECC 库，否则 p2tr 会抛错
+bitcoin.initEccLib(ecc);
+
+// 网络参数：networks.bitcoin(前缀 bc) / networks.testnet(tb) / networks.regtest(bcrt)
+const NETWORK = bitcoin.networks.testnet;   // 学习阶段一律用 testnet
+
+module.exports = { bitcoin, ecc, bip32, ECPair, NETWORK };
+</code></pre>
+<div class="tip"><b>拿测试币：</b>testnet 水龙头（faucet）可搜索 "bitcoin testnet faucet"，常见有 coinfaucet.eu、bitcoinfaucet.uo1.net 等。测试币无价值，但水龙头额度有限，请节约使用。也可以用 <code>bitcoind -regtest</code> 自己挖矿，随要随有，更适合反复调试。</div>
+<h2 id="s11">11. 代码①：助记词 → HD 派生 → bc1q 地址</h2>
+<pre><code>// 01-create-wallet.js —— 生成/恢复 HD 钱包并派生原生 SegWit 地址
+// 运行：node 01-create-wallet.js
+const bip39 = require('bip39');
+const { bitcoin, bip32, NETWORK } = require('./setup');
+
+// ---------- 第 1 步：生成助记词（BIP39）----------
+// 128 位熵 → 12 词；256 位熵 → 24 词。12 词已相当于 128 位安全强度，足够使用
+const mnemonic = bip39.generateMnemonic(128);
+console.log('助记词(请离线抄写，切勿截图或上传):\n  ' + mnemonic);
+// BIP39 末尾若干位是校验和，抄错一个词就会校验失败
+console.log('助记词校验 =', bip39.validateMnemonic(mnemonic));
+
+// ---------- 第 2 步：助记词 → 种子 ----------
+// PBKDF2-HMAC-SHA512，迭代 2048 次，salt = "mnemonic" + passphrase
+// 第二参数是可选 passphrase（俗称第 25 个词），改变它会得到一个完全不同的钱包
+const seed = bip39.mnemonicToSeedSync(mnemonic, '' /* passphrase */);
+console.log('种子(512 位) =', seed.toString('hex').slice(0, 32) + '...');
+
+// ---------- 第 3 步：种子 → 主私钥（BIP32 根）----------
+const root = bip32.fromSeed(seed, NETWORK);
+console.log('主指纹 =', root.fingerprint.toString('hex'),
+            '| 根 xprv =', root.toBase58().slice(0, 20) + '...');
+
+// ---------- 第 4 步：按 BIP84 路径派生 ----------
+// 路径语义: m / purpose' / coin_type' / account' / change / index
+// purpose=84 表示原生 SegWit(P2WPKH)；coin_type 主网为 0，测试网为 1
+const MAINNET_PATH = "m/84'/0'/0'/0/0";   // 主网标准路径
+const PATH = "m/84'/1'/0'/0/0";           // 连 testnet 时应使用 coin_type=1
+console.log('主网标准路径 =', MAINNET_PATH, '| 本次实际使用 =', PATH);
+const child = root.derivePath(PATH);
+console.log('子私钥(WIF) =', child.toWIF());
+console.log('子公钥(33 字节压缩) =', child.publicKey.toString('hex'));
+
+// ---------- 第 5 步：公钥 → P2WPKH 地址（bc1q / tb1q）----------
+// payments.p2wpkh 内部：hash160(pubkey) → 组装 OP_0 &lt;20字节&gt; → bech32 编码
+const { address, output } = bitcoin.payments.p2wpkh({ pubkey: child.publicKey, network: NETWORK });
+console.log('地址(P2WPKH) =', address);
+console.log('锁定脚本 hex =', output.toString('hex'), '(以 0014 开头)');
+console.log('锁定脚本 asm =', bitcoin.script.toASM(output));
+
+// ---------- 第 6 步：批量派生收款链与找零链 ----------
+// 账户级扩展公钥可交给观察钱包(watch-only)：它能生成地址但无法花钱
+const accountNode = root.derivePath("m/84'/1'/0'");
+console.log('\n账户扩展公钥(可安全分享) =', accountNode.neutered().toBase58().slice(0, 24) + '...');
+
+const addrOf = (n) =&gt; bitcoin.payments.p2wpkh({ pubkey: n.publicKey, network: NETWORK }).address;
+for (const chain of [0, 1]) {                    // 0=收款链, 1=找零链
+  for (let i = 0; i &lt; 3; i++) {
+    // 非硬化派生，可仅凭 xpub 完成，这是 watch-only 钱包的基础
+    console.log("  m/84'/1'/0'/" + chain + '/' + i, addrOf(accountNode.derive(chain).derive(i)));
+  }
+}
+
+// ---------- 第 7 步：同一把公钥的四种地址形态 ----------
+const pubkey = child.publicKey;
+const xOnly = pubkey.subarray(1, 33);   // Taproot 用 32 字节 x-only 公钥（去掉奇偶标志字节）
+console.log('\n  P2PKH      ', bitcoin.payments.p2pkh({ pubkey, network: NETWORK }).address);
+console.log('  P2SH-P2WPKH', bitcoin.payments.p2sh({
+  redeem: bitcoin.payments.p2wpkh({ pubkey, network: NETWORK }), network: NETWORK }).address);
+console.log('  P2WPKH     ', address);
+console.log('  P2TR       ', bitcoin.payments.p2tr({ internalPubkey: xOnly, network: NETWORK }).address);
+</code></pre>
+<div class="warn"><b>安全提醒：</b>不要在生产代码里 <code>console.log</code> 私钥或助记词；不要把助记词写进日志、异常堆栈、监控上报。生成密钥的机器应离线；测试代码里的助记词永远不要在主网使用。</div>
+<h2 id="s12">12. 代码②：查询地址 UTXO（mempool.space API）</h2>
+<pre><code>// 02-fetch-utxo.js —— 通过 Esplora 兼容 API 查询地址的 UTXO、余额与交易
+// 运行：node 02-fetch-utxo.js tb1q...
+const API = 'https://mempool.space/testnet/api';   // 主网去掉 /testnet
+
+// 统一的 GET 封装：带错误信息，便于排查
+async function get(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error('请求失败 ' + res.status + ' ' + path + ' :: ' + (await res.text()));
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('json') ? res.json() : res.text();
+}
+
+// ① UTXO 列表：[{txid, vout, value, status:{confirmed, block_height, block_time}}]
+const fetchUtxos = (address) =&gt; get('/address/' + address + '/utxo');
+
+// ② 取某笔交易的完整 hex（构建传统 P2PKH 输入时需要完整前序交易）
+const fetchTxHex = (txid) =&gt; get('/tx/' + txid + '/hex');
+
+// ③ 推荐费率
+const fetchFeeRates = () =&gt; get('/v1/fees/recommended');
+
+// ④ 地址统计（链上已确认 + 内存池未确认），单位均为聪
+async function fetchAddressStats(address) {
+  const info = await get('/address/' + address);
+  const c = info.chain_stats, m = info.mempool_stats;
+  return {
+    确认余额: c.funded_txo_sum - c.spent_txo_sum,
+    未确认余额: m.funded_txo_sum - m.spent_txo_sum,
+    历史交易数: c.tx_count + m.tx_count
+  };
+}
+
+// ⑤ 广播交易：body 直接放 hex 字符串，成功返回 txid
+async function broadcast(txHex) {
+  const res = await fetch(API + '/tx', { method: 'POST', body: txHex });
+  const text = await res.text();
+  if (!res.ok) throw new Error('广播失败: ' + text);
+  return text;
+}
+
+(async () =&gt; {
+  const address = process.argv[2];
+  if (!address) {
+    console.error('用法: node 02-fetch-utxo.js &lt;测试网地址&gt;');
+    process.exit(1);
+  }
+
+  console.log('地址:', address, '\n统计:', await fetchAddressStats(address));
+
+  const utxos = await fetchUtxos(address);
+  if (utxos.length === 0) return console.log('\n无可用 UTXO，请先去 testnet faucet 领测试币。');
+
+  console.log('\nUTXO 列表 (' + utxos.length + ' 个):');
+  let total = 0;
+  for (const u of utxos) {
+    total += u.value;
+    const state = u.status.confirmed ? ('已确认 @高度' + u.status.block_height) : '未确认(内存池)';
+    console.log('  ' + u.txid.slice(0, 16) + '...:' + u.vout,
+                '| ' + String(u.value).padStart(10) + ' 聪 | ' + state);
+  }
+  console.log('合计可用 =', total, '聪 =', (total / 1e8).toFixed(8), 'BTC');
+  console.log('\n当前推荐费率(sat/vB):', await fetchFeeRates());
+})();
+
+module.exports = { fetchUtxos, fetchAddressStats, fetchTxHex, fetchFeeRates, broadcast, API };
+</code></pre>
+<div class="note"><b>为什么 SegWit 输入不需要完整前序交易？</b>P2WPKH 的签名哈希算法（BIP143）把「被花费输出的金额和脚本」直接纳入签名，所以只需提供 <code>witnessUtxo = {script, value}</code>。而传统 P2PKH 使用旧的 SIGHASH 算法，钱包无法独立确认金额，必须提供整笔前序交易（<code>nonWitnessUtxo</code>）让库自行校验。这也是 SegWit 顺手解决的「离线签名器无法验证金额」问题。</div>
+<h2 id="s13">13. 代码③：PSBT 构建并广播 P2WPKH 转账（本篇核心）</h2>
+<p>这是全篇最重要的一段代码。它完整走完一笔转账的生命周期：<b>选币 → 估费 → 构建 PSBT → 签名 → 验签 → finalize → 提取原始交易 → 广播</b>。请逐行读注释。</p>
+<pre><code>// 03-send-p2wpkh.js —— 用 PSBT 构建、签名并广播一笔原生 SegWit 转账
+// 运行：node 03-send-p2wpkh.js "助记词..." tb1q收款地址 20000
+const bip39 = require('bip39');
+const { bitcoin, bip32, ECPair, ecc, NETWORK } = require('./setup');
+const { fetchUtxos, fetchFeeRates, broadcast } = require('./02-fetch-utxo');
+
+const DERIVE_PATH = "m/84'/1'/0'/0/0";   // 测试网 BIP84 首地址
+const DUST = 294;                        // P2WPKH 粉尘阈值
+
+// ---------- 工具：估算 vsize（仅含 P2WPKH 输入/输出）----------
+const estimateVsize = (inCount, outCount) =&gt; Math.ceil(10.5 + 68 * inCount + 31 * outCount);
+
+// ---------- 工具：从大到小累加选币 ----------
+function selectCoins(utxos, target, feeRate) {
+  // 稳妥起见只用已确认 UTXO；从大到小排序以减少输入个数
+  const spendable = utxos.filter(u =&gt; u.status.confirmed).sort((a, b) =&gt; b.value - a.value);
+  const picked = [];
+  let sum = 0;
+  for (const u of spendable) {
+    picked.push(u); sum += u.value;
+    const feeWithChange = estimateVsize(picked.length, 2) * feeRate;
+    const feeNoChange   = estimateVsize(picked.length, 1) * feeRate;
+    // 剩余太少，不值得建找零输出 → 全部差额给矿工
+    if (sum &gt;= target + feeNoChange &amp;&amp; sum &lt; target + feeWithChange + DUST) {
+      return { inputs: picked, change: 0, fee: sum - target,
+               vsize: estimateVsize(picked.length, 1) };
+    }
+    if (sum &gt;= target + feeWithChange + DUST) {
+      return { inputs: picked, change: sum - target - Math.ceil(feeWithChange),
+               fee: Math.ceil(feeWithChange), vsize: estimateVsize(picked.length, 2) };
+    }
+  }
+  throw new Error('余额不足。可用 ' + sum + ' 聪，需要至少 ' + (target + 500) + ' 聪');
+}
+
+async function main() {
+  const [mnemonic, toAddress, amountStr] = process.argv.slice(2);
+  if (!mnemonic || !toAddress || !amountStr) {
+    console.error('用法: node 03-send-p2wpkh.js "助记词" &lt;收款地址&gt; &lt;金额(聪)&gt;');
+    process.exit(1);
+  }
+  const amount = parseInt(amountStr, 10);
+  if (!Number.isInteger(amount) || amount &lt;= DUST) throw new Error('金额必须为大于粉尘阈值的整数聪');
+
+  // ===== 步骤 1：恢复密钥 =====
+  if (!bip39.validateMnemonic(mnemonic)) throw new Error('助记词校验失败');
+  const node = bip32.fromSeed(bip39.mnemonicToSeedSync(mnemonic), NETWORK).derivePath(DERIVE_PATH);
+  // 用 ECPair 包一层，得到统一的 sign/verify 接口
+  const keyPair = ECPair.fromPrivateKey(node.privateKey, { network: NETWORK });
+  const payment = bitcoin.payments.p2wpkh({ pubkey: keyPair.publicKey, network: NETWORK });
+  const fromAddress = payment.address;
+  console.log('发送方地址 =', fromAddress);
+
+  // ===== 步骤 2：拉取 UTXO 与费率 =====
+  const utxos = await fetchUtxos(fromAddress);
+  if (!utxos.length) throw new Error('该地址没有 UTXO，请先领取测试币');
+  const feeRate = (await fetchFeeRates()).halfHourFee;   // 也可用 fastestFee / economyFee
+  console.log('可用 UTXO =', utxos.length, '个 | 采用费率 =', feeRate, 'sat/vB');
+
+  // ===== 步骤 3：选币与算账 =====
+  const sel = selectCoins(utxos, amount, feeRate);
+  const inputSum = sel.inputs.reduce((s, u) =&gt; s + u.value, 0);
+  console.log('\n--- 交易账目 ---');
+  console.log('输入合计   :', inputSum, '聪 (' + sel.inputs.length + ' 个输入)');
+  console.log('支付给对方 :', amount, '聪');
+  console.log('找零       :', sel.change, '聪');
+  console.log('手续费     :', sel.fee, '聪 | 预估 vsize =', sel.vsize, 'vB',
+              '| 实际费率 ≈', (sel.fee / sel.vsize).toFixed(2), 'sat/vB');
+  // 账目守恒校验：这一行能挡住绝大多数资金事故
+  if (inputSum !== amount + sel.change + sel.fee) throw new Error('账目不平，拒绝构建交易');
+
+  // ===== 步骤 4：构建 PSBT =====
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.setVersion(2);        // version 2 才支持 BIP68 相对时间锁
+  psbt.setLocktime(0);       // 0 = 不设绝对时间锁
+  for (const u of sel.inputs) {
+    psbt.addInput({
+      hash: u.txid,          // bitcoinjs 接受显示序 hex 字符串，内部自动反转字节序
+      index: u.vout,
+      // SegWit 输入只需 witnessUtxo（被花费输出的脚本+金额），BIP143 要求它们参与签名哈希
+      witnessUtxo: { script: payment.output,   // 即 0014&lt;pubKeyHash&gt;
+                     value: u.value },         // v6 用 number(聪)；v7 改为 bigint
+      sequence: 0xfffffffd   // 开启 RBF：允许后续用更高费率替换本交易（BIP125）
+    });
+  }
+  psbt.addOutput({ address: toAddress, value: amount });   // 输出 1：收款方
+  // 输出 2：找零。真实钱包应改用找零链 m/84'/1'/0'/1/i 的新地址以保护隐私
+  if (sel.change &gt; 0) psbt.addOutput({ address: fromAddress, value: sel.change });
+  console.log('\nPSBT(未签名, base64) =\n' + psbt.toBase64().slice(0, 120) + '...');
+
+  // ===== 步骤 5：签名（逐输入签名，硬件钱包/离线签名器在此介入）=====
+  for (let i = 0; i &lt; sel.inputs.length; i++) psbt.signInput(i, keyPair);
+
+  // ===== 步骤 6：验签（强烈建议，能提前发现脚本/金额错误）=====
+  const validator = (pubkey, msghash, signature) =&gt;
+    ECPair.fromPublicKey(pubkey).verify(msghash, signature);
+  for (let i = 0; i &lt; sel.inputs.length; i++) {
+    if (!psbt.validateSignaturesOfInput(i, validator)) throw new Error('输入 ' + i + ' 验签失败');
+  }
+  console.log('所有输入签名验证通过');
+
+  // ===== 步骤 7：finalize —— 把部分签名整理成最终的 scriptSig / witness =====
+  psbt.finalizeAllInputs();
+
+  // ===== 步骤 8：提取原始交易 =====
+  const tx = psbt.extractTransaction();
+  const txHex = tx.toHex();
+  console.log('\ntxid       =', tx.getId());
+  console.log('实际 vsize =', tx.virtualSize(), 'vB | weight =', tx.weight());
+  console.log('实际费率   ≈', (sel.fee / tx.virtualSize()).toFixed(2), 'sat/vB');
+  console.log('原始交易 hex =\n' + txHex);
+
+  // ===== 步骤 9：广播（加一道人工确认，避免误发）=====
+  if (process.env.BROADCAST !== '1') {
+    console.log('\n[未广播] 设置 BROADCAST=1 才会真正发送；也可把 hex 贴到 mempool.space 手动广播。');
+    return;
+  }
+  const txid = await broadcast(txHex);
+  console.log('\n广播成功！查看: https://mempool.space/testnet/tx/' + txid);
+}
+
+main().catch(e =&gt; { console.error('错误:', e.message); process.exit(1); });
+</code></pre>
+<h3>13.1 这段代码里的九个关键决策点</h3>
+<table>
+<tr><th>步骤</th><th>关键决策</th><th>做错的后果</th></tr>
+<tr><td>1 恢复密钥</td><td>路径必须与地址生成时一致</td><td>派生出别人的地址，签名对不上 UTXO</td></tr>
+<tr><td>2 拉 UTXO</td><td>是否使用未确认 UTXO</td><td>父交易被替换则本交易失效</td></tr>
+<tr><td>3 选币算账</td><td>找零与手续费的守恒校验</td><td>漏找零 → 巨额手续费损失</td></tr>
+<tr><td>4 addInput</td><td>SegWit 用 witnessUtxo，传统用 nonWitnessUtxo</td><td>签名哈希算法错误，脚本验证失败</td></tr>
+<tr><td>4 sequence</td><td>0xfffffffd 开启 RBF</td><td>低费卡住后无法加速</td></tr>
+<tr><td>4 addOutput</td><td>找零应使用新的找零地址</td><td>地址复用，隐私泄露</td></tr>
+<tr><td>5 signInput</td><td>逐输入签名，多签需多方轮流</td><td>缺签导致 finalize 抛错</td></tr>
+<tr><td>6 validate</td><td>广播前本地验签</td><td>把无效交易发出去，浪费时间还暴露意图</td></tr>
+<tr><td>8 extract</td><td>用真实 virtualSize 复核费率</td><td>估算偏差导致交易长时间不确认</td></tr>
+</table>
+<h3>13.2 常见报错对照</h3>
+<table>
+<tr><th>报错信息</th><th>原因</th><th>解决</th></tr>
+<tr><td><code>Can not sign for input #0 with the key ...</code></td><td>私钥与 witnessUtxo 的 script 不匹配</td><td>确认派生路径与地址类型一致</td></tr>
+<tr><td><code>Not enough information on inputs to sign</code></td><td>缺 witnessUtxo / nonWitnessUtxo</td><td>补齐输入元数据</td></tr>
+<tr><td><code>bad-txns-inputs-missingorspent</code></td><td>UTXO 已被花掉或不存在</td><td>重新拉取 UTXO</td></tr>
+<tr><td><code>min relay fee not met</code></td><td>费率低于最低中继费（约 1 sat/vB）</td><td>提高 feeRate</td></tr>
+<tr><td><code>dust</code></td><td>输出金额低于粉尘阈值</td><td>提高金额或去掉该输出</td></tr>
+<tr><td><code>non-mandatory-script-verify-flag</code></td><td>脚本验证失败（常见于 witness 组装错误）</td><td>检查 finalize 与 payment 构造</td></tr>
+<tr><td><code>tiny-secp256k1 ... not a function</code></td><td>v6 未注入 ecc / 忘记 <code>.default</code></td><td>按 setup.js 模板初始化</td></tr>
+</table>
+<h2 id="s14">14. WIF 私钥导入与导出</h2>
+<p>WIF（Wallet Import Format）是单个私钥的 Base58Check 编码，便于在钱包间搬运单个密钥（注意：它只承载一把密钥，不是 HD 钱包）。</p>
+<pre><code>// 04-wif.js —— WIF 的导入、导出与结构解析
+const { bitcoin, ECPair, NETWORK } = require('./setup');
+const bs58check = require('bs58check');   // bitcoinjs 依赖树中已有；如无请 npm i bs58check
+
+// ---------- 导出：随机密钥 → WIF ----------
+const kp = ECPair.makeRandom({ network: NETWORK });
+const wif = kp.toWIF();
+console.log('随机私钥 hex =', kp.privateKey.toString('hex'));
+console.log('WIF          =', wif);
+console.log('是否压缩公钥 =', kp.compressed);
+
+// ---------- 导入：WIF → 密钥对 → 地址 ----------
+const imported = ECPair.fromWIF(wif, NETWORK);
+console.log('导入后公钥一致 =', imported.publicKey.equals(kp.publicKey));
+console.log('对应 bc1q/tb1q 地址 =',
+  bitcoin.payments.p2wpkh({ pubkey: imported.publicKey, network: NETWORK }).address);
+
+// ---------- 解析 WIF 的字节结构 ----------
+// 结构: [版本1字节][私钥32字节]([压缩标志0x01]) 再做 Base58Check（附 4 字节校验和）
+function decodeWIF(wifStr) {
+  const payload = bs58check.decode(wifStr);   // 自动校验并去掉 4 字节校验和
+  const version = payload[0];
+  return {
+    版本字节: '0x' + version.toString(16),
+    网络: version === 0x80 ? '主网' : (version === 0xef ? '测试网/regtest' : '未知'),
+    私钥: Buffer.from(payload.subarray(1, 33)).toString('hex'),
+    压缩标志: payload.length === 34 &amp;&amp; payload[33] === 0x01
+  };
+}
+console.log('\nWIF 解析:', decodeWIF(wif));
+
+// ---------- 版本字节与首字符对照 ----------
+// 主网未压缩 0x80 → 5...   主网压缩 0x80+0x01 → K.../L...   测试网压缩 0xef+0x01 → c...
+
+// ---------- 从 HD 钱包导出单个 WIF（把某地址私钥交给第三方工具时用）----------
+const bip39 = require('bip39');
+const { bip32 } = require('./setup');
+const child = bip32.fromSeed(bip39.mnemonicToSeedSync(bip39.generateMnemonic(128)), NETWORK)
+                   .derivePath("m/84'/1'/0'/0/0");
+console.log('HD 首地址私钥导出为 WIF =', child.toWIF());
+</code></pre>
+<div class="warn"><b>WIF 的两个坑：</b>① 主网 WIF 导入测试网库会因版本字节不符而报错，跨网搬运需显式指定 network；② WIF 里的<b>压缩标志会改变生成的地址</b>——同一把私钥，压缩公钥和非压缩公钥对应两个不同的 P2PKH 地址。早期钱包的资产丢失事故大多源于此。SegWit 只允许压缩公钥。</div>
+<h2 id="s15">15. 2-of-3 多签地址（P2SH 与 P2WSH）</h2>
+<p>多签（multisig）用 <code>OP_CHECKMULTISIG</code> 实现「M 个签名中的任意 M 个即可花费」。2-of-3 是最常用配置：三把钥匙分散保管，丢一把不影响使用，被盗一把不损失资金。</p>
+<h3>15.1 传统多签：P2SH（地址 3... / 2...）</h3>
+<pre><code>// 05-multisig-p2sh.js —— 创建 2-of-3 P2SH 多签地址
+const { bitcoin, ECPair, NETWORK } = require('./setup');
+
+// 三位参与者各持一把密钥（生产环境应由三方各自离线生成，只交换公钥）
+const [alice, bob, carol] = [1, 2, 3].map(() =&gt; ECPair.makeRandom({ network: NETWORK }));
+
+// 关键：公钥顺序会改变赎回脚本与地址！按字典序排序（BIP67）可保证任何人算出同一地址
+const pubkeys = [alice, bob, carol].map(k =&gt; k.publicKey).sort((a, b) =&gt; Buffer.compare(a, b));
+
+// 第 1 层：p2ms 生成裸多签脚本 OP_2 &lt;pk1&gt; &lt;pk2&gt; &lt;pk3&gt; OP_3 OP_CHECKMULTISIG
+const p2ms = bitcoin.payments.p2ms({ m: 2, pubkeys, network: NETWORK });
+// 第 2 层：包进 P2SH，链上只暴露脚本哈希，付款方看不到内部结构
+const p2sh = bitcoin.payments.p2sh({ redeem: p2ms, network: NETWORK });
+
+console.log('=== 2-of-3 P2SH 多签 ===');
+console.log('地址         =', p2sh.address);                      // 主网 3... / 测试网 2...
+console.log('赎回脚本 asm =', bitcoin.script.toASM(p2ms.output));
+console.log('赎回脚本 hex =', p2ms.output.toString('hex'));        // 【必须备份】
+console.log('锁定脚本 asm =', bitcoin.script.toASM(p2sh.output));  // OP_HASH160 &lt;h&gt; OP_EQUAL
+
+// 花费时 scriptSig = OP_0 &lt;签名A&gt; &lt;签名B&gt; &lt;赎回脚本&gt;
+// 开头的 OP_0 是为了填补 OP_CHECKMULTISIG 多弹一个栈元素的历史 bug；
+// 签名顺序必须与赎回脚本中的公钥顺序一致，否则验证失败。
+// 该类型单输入 vsize ≈ 297 vB（远高于 P2WPKH 的 68），费用昂贵。
+</code></pre>
+<h3>15.2 隔离见证多签：P2WSH（地址 bc1q，62 字符）</h3>
+<pre><code>// 06-multisig-p2wsh.js —— 创建 2-of-3 P2WSH 多签地址（推荐）
+const { bitcoin, ECPair, NETWORK } = require('./setup');
+
+const keys = [1, 2, 3].map(() =&gt; ECPair.makeRandom({ network: NETWORK }));
+const pubkeys = keys.map(k =&gt; k.publicKey).sort((a, b) =&gt; Buffer.compare(a, b));
+
+const p2ms = bitcoin.payments.p2ms({ m: 2, pubkeys, network: NETWORK });
+
+// ① 原生 P2WSH：锁定脚本 = OP_0 &lt;sha256(witnessScript)&gt;（32 字节，故地址更长）
+const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network: NETWORK });
+console.log('=== 2-of-3 P2WSH（原生，推荐）===');
+console.log('地址         =', p2wsh.address);                       // tb1q... 62 字符
+console.log('见证脚本 hex =', p2ms.output.toString('hex'));
+console.log('锁定脚本 asm =', bitcoin.script.toASM(p2wsh.output));
+console.log('见证脚本哈希 = sha256(witnessScript)，注意不是 hash160');
+
+// ② 嵌套 P2SH-P2WSH：兼容只能向 3... 地址付款的老钱包/老交易所
+const nested = bitcoin.payments.p2sh({ redeem: p2wsh, network: NETWORK });
+console.log('\n=== P2SH-P2WSH（兼容型）=== 地址 =', nested.address);  // 普通 3... 外观
+
+// ③ 费用对比：同为 2-of-3，隔离见证便宜很多（单输入 vsize）
+for (const [name, vsize, note] of [
+  ['P2SH 2-of-3',        297, '签名与赎回脚本全额计费'],
+  ['P2SH-P2WSH 2-of-3',  139, '见证数据 1/4 折算，外层多 35 字节'],
+  ['P2WSH 2-of-3',       104, '最省，且修复了交易延展性'],
+  ['P2TR (MuSig2 聚合)',  57.5, '链上看不出是多签，隐私最好']
+]) console.log('  ' + name.padEnd(22) + String(vsize).padStart(6) + ' vB | ' + note);
+
+// ④ 用 PSBT 花费 P2WSH 多签时，输入必须额外提供 witnessScript，否则无法签名/finalize
+console.log('\nPSBT 输入模板 =', JSON.stringify({
+  hash: '&lt;txid&gt;', index: 0,
+  witnessUtxo: { script: '&lt;p2wsh.output hex&gt;', value: '&lt;聪&gt;' },
+  witnessScript: '&lt;p2ms.output hex&gt;'
+}));
+</code></pre>
+<div class="tip"><b>选型建议：</b>新项目一律用 <b>P2WSH</b>（或 Taproot + MuSig2）。P2SH 多签只在需要兼容老系统时使用。无论哪种，<b>赎回脚本/见证脚本必须与私钥一起备份</b>——只有私钥而没有脚本，资金将永久锁死。这就是输出描述符（Descriptors）被发明出来的原因，详见下一篇。</div>
+<h2 id="s16">16. 常用 API 服务对照与自建节点</h2>
+<table>
+<tr><th>服务</th><th>类型</th><th>接口风格</th><th>免费额度</th><th>适用场景</th></tr>
+<tr><td>mempool.space</td><td>开源浏览器 + API</td><td>Esplora 兼容 REST + WebSocket</td><td>公开无 key，有速率限制<span class="badge free">免费</span></td><td>学习、费率查询、区块浏览，可自建</td></tr>
+<tr><td>Blockstream Esplora</td><td>开源浏览器 + API</td><td>Esplora REST（本 API 的原型）</td><td>公开无 key<span class="badge free">免费</span></td><td>UTXO 查询、交易广播、可自托管</td></tr>
+<tr><td>BlockCypher</td><td>商业 API</td><td>自有 REST，含 webhook</td><td>需注册，有免费层</td><td>需要回调通知、多链统一接口</td></tr>
+<tr><td>Blockchain.com API</td><td>商业 API</td><td>自有 REST</td><td>有限免费</td><td>历史数据查询</td></tr>
+<tr><td>Bitcoin Core 自建</td><td>全节点</td><td>JSON-RPC + ZMQ</td><td>自费硬件<span class="badge key">生产首选</span></td><td>生产环境，无信任、无限流、隐私最好</td></tr>
+<tr><td>Electrum Server<br>(electrs / Fulcrum)</td><td>索引服务</td><td>Electrum 协议</td><td>自建</td><td>为轻钱包提供地址索引，性能好</td></tr>
+</table>
+<h3>16.1 Esplora API 常用端点速查</h3>
+<table>
+<tr><th>端点</th><th>用途</th></tr>
+<tr><td>GET /address/:addr</td><td>地址统计（已确认/未确认收支）</td></tr>
+<tr><td>GET /address/:addr/utxo</td><td>UTXO 列表 <span class="badge key">核心</span></td></tr>
+<tr><td>GET /address/:addr/txs</td><td>地址相关交易（分页）</td></tr>
+<tr><td>GET /tx/:txid</td><td>交易详情（JSON）</td></tr>
+<tr><td>GET /tx/:txid/hex</td><td>交易原始 hex（构建传统输入时需要）</td></tr>
+<tr><td>GET /tx/:txid/status</td><td>确认状态与所在区块</td></tr>
+<tr><td>POST /tx</td><td>广播交易（body 为 hex 字符串）<span class="badge key">核心</span></td></tr>
+<tr><td>GET /blocks/tip/height</td><td>当前链高度</td></tr>
+<tr><td>GET /v1/fees/recommended</td><td>推荐费率（mempool.space 扩展）</td></tr>
+<tr><td>GET /fee-estimates</td><td>按目标区块数的费率估算</td></tr>
+</table>
+<h3>16.2 自建 Bitcoin Core 节点（regtest 快速上手）</h3>
+<pre><code># ---------- 配置文件 ----------
+# Linux/macOS: ~/.bitcoin/bitcoin.conf     Windows: %APPDATA%\Bitcoin\bitcoin.conf
+# 内容：regtest=1  server=1  txindex=1  fallbackfee=0.0002
+#       rpcuser=devuser  rpcpassword=devpass  [regtest] rpcport=18443
+
+bitcoind -regtest -daemon                            # 启动节点
+
+# ---------- 创建钱包并挖出可用余额 ----------
+bitcoin-cli -regtest createwallet "dev"
+ADDR=$(bitcoin-cli -regtest getnewaddress "" "bech32")
+# regtest 可自行挖矿：挖 101 个块让第一个 coinbase 度过 100 块成熟期
+bitcoin-cli -regtest generatetoaddress 101 "$ADDR"
+bitcoin-cli -regtest getbalance
+
+# ---------- 常用 RPC ----------
+bitcoin-cli -regtest getblockchaininfo             # 链状态
+bitcoin-cli -regtest listunspent                   # 本钱包 UTXO
+bitcoin-cli -regtest sendtoaddress "$ADDR" 0.1     # 转账
+bitcoin-cli -regtest generatetoaddress 1 "$ADDR"   # 立刻确认（regtest 特权）
+bitcoin-cli -regtest decoderawtransaction &lt;hex&gt;    # 解析你自己构建的交易
+bitcoin-cli -regtest testmempoolaccept '["&lt;hex&gt;"]' # 广播前试跑，强烈推荐
+</code></pre>
+<div class="tip"><b>调试利器 <code>testmempoolaccept</code>：</b>它在不广播的前提下告诉你交易是否会被节点接受以及拒绝原因。把它接入单元测试，可以在不花一分测试币的情况下验证脚本、费率、粉尘等全部规则。</div>
+<h3>16.3 用 Node.js 调用 Core JSON-RPC</h3>
+<pre><code>// 07-core-rpc.js —— 用内置 fetch 调用 Bitcoin Core JSON-RPC，无需额外依赖
+const RPC_URL  = 'http://127.0.0.1:18443/';       // regtest 端口
+const RPC_AUTH = 'Basic ' + Buffer.from('devuser:devpass').toString('base64');
+
+// 钱包相关 RPC 需要带钱包路径，例如 /wallet/dev
+async function rpc(method, params = [], wallet = '') {
+  const res = await fetch(RPC_URL + (wallet ? 'wallet/' + wallet : ''), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: RPC_AUTH },
+    body: JSON.stringify({ jsonrpc: '1.0', id: Date.now(), method, params })
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(method + ' 失败: ' + JSON.stringify(json.error));
+  return json.result;
+}
+
+(async () =&gt; {
+  const info = await rpc('getblockchaininfo');
+  console.log('链 =', info.chain, '| 高度 =', info.blocks);
+  console.log('UTXO 数 =', (await rpc('listunspent', [], 'dev')).length);
+  // 广播前自检：把 bitcoinjs 构建出的 hex 传进来
+  // console.log(await rpc('testmempoolaccept', [['&lt;your-tx-hex&gt;']]));
+})().catch(e =&gt; console.error(e.message));
+</code></pre>
+<div class="exercise"><b>动手练习</b>
+<ol>
+<li>运行 <code>mini-pow.js</code>，把难度从 4 逐步提到 7，记录耗时。用数据说明「难度每加 1 位十六进制，成本乘以 16」。</li>
+<li>运行 <code>01-create-wallet.js</code>，生成一套测试网助记词，抄下第 0 个 bc1q（tb1q）地址。再用同一助记词加上 passphrase "test"，确认得到完全不同的地址。</li>
+<li>去 testnet 水龙头领取测试币，用 <code>02-fetch-utxo.js</code> 查询你的地址，确认 UTXO 列表与余额。手工验算：所有 UTXO 的 value 之和是否等于接口返回的确认余额。</li>
+<li>用 <code>03-send-p2wpkh.js</code> 把一小笔测试币转给你自己的第二个地址（m/84'/1'/0'/0/1）。先不广播，把 hex 贴到 mempool.space 的 decode 工具里，逐字段对照第 5 节的解剖表。</li>
+<li>把上一题的交易真正广播出去，在浏览器中找到它，记录：vsize、weight、实际费率、确认所需时间。检查你的估算与实际 vsize 差了多少。</li>
+<li>故意构造一笔「忘记找零」的交易（不加找零输出），用 <code>testmempoolaccept</code> 或本地打印确认手续费变成了多少。理解这个事故的严重性后，为 <code>selectCoins</code> 写一个断言测试。</li>
+<li>创建一个 2-of-3 的 P2WSH 多签地址，向它转入测试币。用 <code>02-fetch-utxo.js</code> 确认到账。（花费流程留到第二篇的 PSBT 多方协作一节完成。）</li>
+<li>对比同一笔转账在 P2PKH / P2SH-P2WPKH / P2WPKH / P2TR 四种地址下的 vsize 与手续费，做成一张表，算出 SegWit 相对传统方案节省的百分比。</li>
+<li>启动 regtest 节点，挖 101 个块，用 <code>07-core-rpc.js</code> 读出 UTXO；再用 bitcoinjs 构建一笔交易并通过 <code>testmempoolaccept</code> 验证，最后广播并自己挖一个块确认它。</li>
+<li>实现 <code>reorg-guard.js</code> 中 <code>DepositTracker</code> 的单元测试：模拟高度 100–105 正常入账，然后在高度 103 制造一次分叉，验证入账状态是否正确回退为 pending。</li>
+</ol>
+</div>
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b>
+<ul>
+<li>能用两句话说清双花问题为什么无法只靠数字签名解决，以及 PoW + 最长链是如何解决它的。</li>
+<li>能不看提示复述白皮书「网络」一节的 6 个步骤。</li>
+<li>能解释为什么难度调整周期是 2016 个区块，以及那个 off-by-one bug 的影响。</li>
+<li>能手工计算：给定 3 个 UTXO、一个付款金额、一个费率，算出输入选择、找零金额与手续费，并验证账目守恒。</li>
+<li>能说出 UTXO 模型相比账户模型在并行验证、重放保护、隐私三方面的差异。</li>
+<li>能指出 txid 与 wtxid 的区别，并解释 SegWit 为什么能修复交易延展性。</li>
+<li>看到 1... / 3... / bc1q(42) / bc1q(62) / bc1p 五种地址，能立刻说出其脚本模板与十六进制前缀。</li>
+<li>知道 Bech32 与 Bech32m 的区别，以及为什么老钱包会把 bc1p 判为无效地址。</li>
+<li>能解释 weight、vsize 的计算公式，以及为什么费率单位是 sat/vB。</li>
+<li>能说清 SPV 能验证什么、不能验证什么，以及 Neutrino 相比 Bloom 过滤器的隐私优势。</li>
+<li>能独立写出 bitcoinjs-lib v6 的初始化模板（注入 tiny-secp256k1、initEccLib、工厂函数）。</li>
+<li>能从零跑通：助记词 → BIP84 派生 → tb1q 地址 → 查 UTXO → PSBT 签名 → 广播。</li>
+<li>能说出 witnessUtxo 与 nonWitnessUtxo 的使用场景差异及背后原因（BIP143）。</li>
+<li>能创建 2-of-3 的 P2SH 与 P2WSH 地址，并解释为什么必须备份赎回脚本。</li>
+<li>知道后端如何处理链重组，以及为什么「确认数」必须持久化而非临时计算。</li>
+<li>能列出至少 3 个 UTXO/广播 API 服务，并说明生产环境为什么优先自建节点。</li>
+</ul>
+</div>
+<div class="pager">
+<a href="index.html"><b>上一篇</b>← 课程目录</a>
+<a class="next" href="02-btc-script.html"><b>下一篇</b>BTC 篇 II：脚本、PSBT 与交易编程深入 →</a>
+</div>
+</main></body></html>

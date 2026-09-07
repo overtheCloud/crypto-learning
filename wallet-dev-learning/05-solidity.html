@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH 篇 II：Solidity 合约语法与开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html" class="cur">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">ETH 篇 II：Solidity 合约开发</span><span class="chain chain-eth">ETH</span></header>
+<main class="doc">
+<h1>ETH 篇 II：Solidity 合约语法与开发</h1><p class="subtitle">从 Remix 5 分钟上手到 Foundry 全家桶，系统精讲 Solidity 语法、OpenZeppelin 标准与 5 个可编译合约，并覆盖测试、部署、升级与安全。主要参考：Solidity 官方文档 docs.soliditylang.org（含中文版）、Cyfrin Updraft、CryptoZombies。</p>
+<div class="goals"><b>本章目标：</b>
+<ul style="margin-bottom:0">
+<li>搭好本地合约开发环境（Remix / Foundry / Hardhat）并跑通编译与测试</li>
+<li>掌握 Solidity 全部核心语法：类型、数据位置、可见性、可变性、错误处理、继承、库</li>
+<li>会用 OpenZeppelin 标准实现 ERC20/721/1155 与权限/安全修饰器</li>
+<li>独立写出 5 个完整合约（含重点的 x*y=k AMM）</li>
+<li>理解升级模式、gas 优化与常见安全漏洞并能在测试中复现攻防</li>
+</ul></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 开发环境：Remix 与 Foundry 全家桶</a>
+<a href="#s2">2. 语法系统精讲（一）：编译头、值类型与数据位置</a>
+<a href="#s3">3. 语法系统精讲（二）：可见性、可变性、修饰器与特殊函数</a>
+<a href="#s4">4. 语法系统精讲（三）：错误处理、事件与数据结构</a>
+<a href="#s5">5. 语法系统精讲（四）：继承、接口、库与低级调用</a>
+<a href="#s6">6. OpenZeppelin 标准库精讲</a>
+<a href="#s7">7. 合约①：ERC20 代币</a>
+<a href="#s8">8. 合约②：ERC721 NFT</a>
+<a href="#s9">9. 合约③：众筹合约</a>
+<a href="#s10">10. 合约④：2-of-3 多签钱包</a>
+<a href="#s11">11. 合约⑤：最小 AMM（x*y=k，重点）</a>
+<a href="#s12">12. 工程实践：Foundry 测试与部署</a>
+<a href="#s13">13. 升级模式、gas 优化与安全模式</a>
+</div>
+
+<h2 id="s1">1. 开发环境：Remix 与 Foundry 全家桶</h2>
+<h3>1.1 Remix 浏览器 IDE（5 分钟上手）</h3>
+<p>Remix（remix.ethereum.org）是零安装的网页 IDE，内置编译器与 JS VM 本地链，最适合快速验证想法：</p>
+<ol>
+<li>左侧 <b>File Explorer</b> 新建 <code>contracts/MyToken.sol</code>。</li>
+<li>切到 <b>Solidity Compiler</b>，选择编译器版本（如 0.8.24），点 Compile。</li>
+<li>切到 <b>Deploy &amp; Run</b>，环境选 <code>JavaScript VM (Cancun)</code>，点 Deploy。</li>
+<li>在下方合约面板调用函数，直接在内存链看到状态变化与事件。</li>
+</ol>
+<div class="tip"><b>建议：</b>Remix 适合学习与演示，但无法做复杂测试与 CI。严肃项目请用 Foundry。</div>
+
+<h3>1.2 Foundry 全家桶</h3>
+<p>Foundry 是用 Rust 写的现代合约工具链，核心是四个命令：</p>
+<table>
+<tr><th>命令</th><th>作用</th><th>常用参数</th></tr>
+<tr><td>forge</td><td>编译/测试/部署/脚本</td><td><code>forge init/build/test/install/script</code></td></tr>
+<tr><td>anvil</td><td>本地测试链（fork 主网、预发账户）</td><td><code>anvil --fork-url $RPC</code></td></tr>
+<tr><td>cast</td><td>命令行读写链上数据</td><td><code>cast call/balance/send/storage</code></td></tr>
+<tr><td>chisel</td><td>Solidity REPL 交互式试验</td><td>直接输入表达式求值</td></tr>
+</table>
+<pre><code># 安装 Foundry（需要 Rust 工具链）
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+
+# 新建项目并初始化
+forge init my-defi &amp;&amp; cd my-defi
+# 目录结构：src/(合约) test/(测试) script/(部署) lib/(依赖)
+forge build          # 编译 src 下所有合约
+forge test           # 跑 test 下所有 *Test.sol
+forge test -vvvv     # 显示 traces，定位 revert 原因
+
+# anvil 起一条本地链，终端会打印 10 个带资金的测试账户
+anvil
+# 另开终端：用 cast 查询某地址余额
+cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://127.0.0.1:8545
+
+# chisel 交互式试写 Solidity
+chisel
+# &gt; 1 + 2
+# &gt; uint256 x = 10; x * x
+</code></pre>
+
+<h3>1.3 Hardhat 简述与取舍</h3>
+<table>
+<tr><th>维度</th><th>Foundry</th><th>Hardhat</th></tr>
+<tr><td>语言</td><td>测试用 Solidity，贴近合约</td><td>测试用 JS/TS，前端团队友好</td></tr>
+<tr><td>速度</td><td>极快（Rust）</td><td>较慢（JS）</td></tr>
+<tr><td>生态</td><td>原生 fuzz/invariant、forge-std</td><td>插件丰富（ethers 集成好）</td></tr>
+<tr><td>选型</td><td>安全研究/协议开发首选</td><td>已有 JS 栈的团队</td></tr>
+</table>
+<div class="note"><b>本文统一用 Foundry</b>（含 forge test 示例）。但 ethers 篇（上/下篇）的 JS 代码与 Hardhat 同理可迁移。</div>
+
+<h2 id="s2">2. 语法系统精讲（一）：编译头、值类型与数据位置</h2>
+<h3>2.1 pragma 与 SPDX</h3>
+<pre><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+contract Hello {
+    // ^0.8.24 表示兼容 0.8.24 及以上但低于 0.9.0
+}
+</code></pre>
+<p><code>SPDX</code> 注释声明许可证（部分工具会警告缺失）；<code>pragma</code> 锁定编译器版本，避免用错版本导致意外行为。</p>
+
+<h3>2.2 值类型</h3>
+<table>
+<tr><th>类型</th><th>说明</th><th>最小示例</th></tr>
+<tr><td>uint / int</td><td>无符号/有符号整数，宽度 8~256（默认 uint256）</td><td><code>uint256 a = 1;</code></td></tr>
+<tr><td>address</td><td>20 字节地址，<code>address payable</code> 可收转账</td><td><code>address owner = msg.sender;</code></td></tr>
+<tr><td>bytes32</td><td>定长字节，适合哈希</td><td><code>bytes32 h = keccak256("x");</code></td></tr>
+<tr><td>bool</td><td>布尔</td><td><code>bool ok = true;</code></td></tr>
+<tr><td>枚举 enum</td><td>自定义离散值</td><td><code>enum State { Created, Active }</code></td></tr>
+</table>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Types {
+    uint256 public count;
+    address public owner;
+    bytes32 public hash;
+    bool public flag;
+
+    enum Status { Pending, Shipped, Done }
+    Status public status;
+
+    function demo() external {
+        count = type(uint256).max;     // 最大值
+        owner = msg.sender;
+        hash = keccak256(abi.encodePacked("hi"));
+        flag = true;
+        status = Status.Shipped;
+    }
+}
+</code></pre>
+
+<h3>2.3 storage / memory / calldata 三者的坑</h3>
+<table>
+<tr><th>位置</th><th>生命周期</th><th>可改？</th><th>成本</th><th>用途</th></tr>
+<tr><td>storage</td><td>持久（上链）</td><td>可</td><td>最贵</td><td>状态变量</td></tr>
+<tr><td>memory</td><td>函数调用期</td><td>可</td><td>中</td><td>函数内临时结构</td></tr>
+<tr><td>calldata</td><td>调用期只读</td><td>不可</td><td>最省</td><td>external 参数（尤字节数组）</td></tr>
+</table>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Locations {
+    struct User { uint256 id; string name; }
+    User[] public users;             // users 在 storage
+
+    // calldata：外部传入的字节数组，不能修改，最省 gas
+    function add(string calldata name) external {
+        User memory u = User(users.length, name); // memory 临时
+        users.push(u);                              // 写入 storage
+    }
+
+    // 返回 memory 副本（只读场景推荐 calldata 参数）
+    function get(uint256 i) external view returns (User memory) {
+        return users[i];
+    }
+}
+</code></pre>
+<div class="warn"><b>坑：</b>① 数组/结构体作为参数，external 函数优先用 <code>calldata</code>（省 gas 且不拷贝）；② 函数内想改 storage 数组元素，要声明 <code>User storage u = users[i];</code> 而非 memory，否则只改了副本；③ <code>memory</code> 与 <code>storage</code> 不能混用引用。</div>
+
+<h2 id="s3">3. 语法系统精讲（二）：可见性、可变性、修饰器与特殊函数</h2>
+<h3>3.1 函数可见性</h3>
+<table>
+<tr><th>可见性</th><th>谁能调用</th></tr>
+<tr><td>external</td><td>仅外部（合约外）；内部调用需 <code>this.f()</code></td></tr>
+<tr><td>public</td><td>内外部均可</td></tr>
+<tr><td>internal</td><td>本合约及子类</td></tr>
+<tr><td>private</td><td>仅本合约（不代表链上不可见！）</td></tr>
+</table>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Vis {
+    uint256 private secret;            // 仅本合约可读写
+    function externalFn() external {}  // 外部调用
+    function publicFn() public {}      // 内外部
+    function internalFn() internal {}  // 子类可用
+    function callThem() public {
+        publicFn();
+        internalFn();
+        // this.externalFn(); // 也可通过 this 调 external
+    }
+}
+</code></pre>
+
+<h3>3.2 状态可变性</h3>
+<table>
+<tr><th>修饰</th><th>含义</th></tr>
+<tr><td>view</td><td>读状态但不改（不耗 Gas 当被外部调用读）</td></tr>
+<tr><td>pure</td><td>既不读也不改状态</td></tr>
+<tr><td>payable</td><td>可接收 ETH</td></tr>
+</table>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Mut {
+    uint256 x;
+    function readX() external view returns (uint256) { return x; }
+    function pureFn(uint256 a, uint256 b) external pure returns (uint256) { return a + b; }
+    function deposit() external payable { x += msg.value; } // 收 ETH
+}
+</code></pre>
+
+<h3>3.3 modifier 与 constructor</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Owned {
+    address public owner;
+    constructor() { owner = msg.sender; }       // 部署时执行一次
+
+    modifier onlyOwner() {                       // 自定义修饰器
+        require(msg.sender == owner, "not owner");
+        _;                                       // 插入被修饰函数体
+    }
+
+    function setOwner(address o) external onlyOwner {
+        owner = o;
+    }
+}
+</code></pre>
+
+<h3>3.4 receive 与 fallback</h3>
+<p>合约收 ETH 有两个特殊函数：<code>receive() external payable</code> 处理「无 calldata 的纯转账」；<code>fallback() external payable</code> 处理「函数不存在或带数据」的调用。没有这两者，合约收到纯 ETH 会 revert。</p>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Sink {
+    event Received(address from, uint256 amount);
+    receive() external payable { emit Received(msg.sender, msg.value); }
+    fallback() external payable {}
+    function balance() external view returns (uint256) { return address(this).balance; }
+}
+</code></pre>
+
+<h2 id="s4">4. 语法系统精讲（三）：错误处理、事件与数据结构</h2>
+<h3>4.1 require / revert / assert 与 custom error</h3>
+<table>
+<tr><th>方式</th><th>用途</th><th>Gas 对比</th></tr>
+<tr><td>require(cond, "msg")</td><td>输入/状态校验，条件假则回滚</td><td>字符串较长时贵</td></tr>
+<tr><td>revert CustomError(...)</td><td>自定义错误，省 Gas、信息结构化</td><td>最省</td></tr>
+<tr><td>assert(cond)</td><td>不应发生的内部不变式，失败表示有 bug</td><td>失败时消耗所有 Gas</td></tr>
+</table>
+<pre><code>pragma solidity ^0.8.24;
+
+// 自定义错误：编码后比字符串短得多，省 gas
+error InsufficientBalance(uint256 have, uint256 need);
+
+contract Err {
+    mapping(address =&gt; uint256) public bal;
+    function withdraw(uint256 amt) external {
+        if (bal[msg.sender] &lt; amt) revert InsufficientBalance(bal[msg.sender], amt); // 推荐
+        require(amt &gt; 0, "amount must &gt; 0");  // 传统写法
+        bal[msg.sender] -= amt;
+        (bool ok, ) = msg.sender.call{value: amt}("");
+        assert(ok);                            // 内部不变式
+    }
+}
+</code></pre>
+
+<h3>4.2 事件 event 与 indexed</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Ev {
+    event Transfer(address indexed from, address indexed to, uint256 value); // 前两个可过滤
+    function emitIt() external {
+        emit Transfer(msg.sender, address(0), 100);
+    }
+}
+</code></pre>
+<div class="tip"><b>用法：</b><code>indexed</code> 参数（最多 3 个）进入 <code>topics</code>，可被前端/合约精确订阅；非 indexed 进入 <code>data</code>，需用 ABI 解码。事件不是给链上逻辑用的，是给「外部世界」听的（见上篇事件监听）。</div>
+
+<h3>4.3 mapping 与数组（遍历陷阱）</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Maps {
+    mapping(address =&gt; uint256) public balances;   // 无长度概念，不能 for 遍历
+    address[] public holders;                       // 数组可遍历
+
+    function credit() external {
+        balances[msg.sender] += 1;
+        holders.push(msg.sender);
+    }
+    function totalHolders() external view returns (uint256) { return holders.length; }
+}
+</code></pre>
+<div class="warn"><b>陷阱：</b>mapping 没有「全部 key 列表」，无法用 <code>for</code> 遍历所有余额；要么额外维护一个数组（如上），要么在链下用事件/Graph 重建。直接 <code>for (k in mapping)</code> 不可行。</div>
+
+<h3>4.4 结构体 struct</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Structs {
+    struct Order { address maker; uint256 amount; bool filled; }
+    Order[] public orders;
+    function create(uint256 amt) external {
+        orders.push(Order(msg.sender, amt, false));
+    }
+}
+</code></pre>
+
+<h2 id="s5">5. 语法系统精讲（四）：继承、接口、库与低级调用</h2>
+<h3>5.1 继承（is、virtual/override、C3 线性化）</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Base {
+    function foo() public virtual returns (string memory) { return "base"; }
+}
+contract A is Base {
+    function foo() public virtual override returns (string memory) { return "A"; }
+}
+contract B is Base {
+    function foo() public virtual override returns (string memory) { return "B"; }
+}
+// 多重继承按 C3 线性化：最派生在最右，base 在左
+contract C is A, B {
+    function foo() public override(A, B) returns (string memory) { return "C"; }
+}
+</code></pre>
+<div class="tip"><b>C3 线性化：</b>多重继承时调用顺序由「子类优先于父类、声明顺序从左到右」决定，确保菱形继承不会重复初始化。写 <code>override(A, B)</code> 列出所有被覆盖的父。</div>
+
+<h3>5.2 接口 interface</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+interface IERC20 {
+    function transfer(address to, uint256 amt) external returns (bool);
+    function balanceOf(address who) external view returns (uint256);
+}
+
+contract Spender {
+    function use(IERC20 token, address to, uint256 amt) external {
+        require(token.transfer(to, amt), "transfer failed"); // 调用任意 ERC20
+    }
+}
+</code></pre>
+
+<h3>5.3 库 library 与 using for</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+library Math {
+    function double(uint256 a) internal pure returns (uint256) { return a * 2; }
+}
+
+contract UseLib {
+    using Math for uint256;       // 把库函数挂到类型上
+    function go() external pure returns (uint256) {
+        return 21.double();       // 等价于 Math.double(21)
+    }
+}
+</code></pre>
+
+<h3>5.4 ABI encode/decode 与低级调用</h3>
+<pre><code>pragma solidity ^0.8.24;
+
+contract Low {
+    // 编码：把参数按 ABI 拼成字节
+    function enc(uint256 a, address b) external pure returns (bytes memory) {
+        return abi.encode(a, b);
+    }
+    function encPacked(uint256 a, string memory s) external pure returns (bytes memory) {
+        return abi.encodePacked(a, s); // 紧密打包，省空间
+    }
+    function dec(bytes memory data) external pure returns (uint256 a, address b) {
+        (a, b) = abi.decode(data, (uint256, address));
+    }
+
+    // 低级调用：手动构造 calldata 并 call 另一合约
+    function rawCall(address target, bytes memory data) external payable returns (bool ok, bytes memory ret) {
+        (ok, ret) = target.call{value: msg.value}(data);
+    }
+}
+</code></pre>
+<div class="warn"><b>call / delegatecall 风险：</b><code>call</code> 在<strong>目标合约上下文</strong>执行（msg.sender 变本合约，storage 是目标的）；<code>delegatecall</code> 则在<strong>本合约上下文</strong>执行目标代码（storage 是自己的）——代理升级正是利用 delegatecall 把逻辑委托给实现合约，但因此极易造成「存储布局冲突」（见 13 节）。<code>staticcall</code> 则禁止改状态，用于只读调用。</div>
+
+<h2 id="s6">6. OpenZeppelin 标准库精讲</h2>
+<p>OpenZeppelin Contracts 是经过审计的标准积木。Foundry 下安装：</p>
+<pre><code>forge install OpenZeppelin/openzeppelin-contracts
+# 或在 Remix 用 npm/CDN；Hardhat 用 npm install @openzeppelin/contracts
+</code></pre>
+<table>
+<tr><th>组件</th><th>用途</th><th>关键点</th></tr>
+<tr><td>ERC20</td><td>同质化代币</td><td>继承后实现 _mint/_burn，配 decimals</td></tr>
+<tr><td>ERC721</td><td>非同质化代币（NFT）</td><td>需 tokenURI 指向 metadata</td></tr>
+<tr><td>ERC1155</td><td>多代币（半同质）</td><td>一份合约发多种 tokenId</td></tr>
+<tr><td>Ownable</td><td>单所有者权限</td><td><code>onlyOwner</code> 修饰器</td></tr>
+<tr><td>AccessControl</td><td>多角色权限</td><td><code>DEFAULT_ADMIN_ROLE</code> + 自定义 role</td></tr>
+<tr><td>Pausable</td><td>紧急暂停</td><td><code>whenNotPaused</code></td></tr>
+<tr><td>ReentrancyGuard</td><td>防重入</td><td><code>nonReentrant</code></td></tr>
+<tr><td>SafeERC20</td><td>安全转账 ERC20</td><td>处理「不返回 bool」的老代币</td></tr>
+</table>
+<pre><code>// 使用 remappings 让 import 路径更短（foundry.toml 配 remappings.txt）
+// node_modules/@openzeppelin/contracts/token/ERC20/ERC20.sol =&gt; @openzeppelin/contracts/...
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+</code></pre>
+
+<h2 id="s7">7. 合约①：ERC20 代币</h2>
+<p>完整可编译，含权限 mint/burn：</p>
+<pre><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title 教学用 ERC20：带权限的增发与销毁
+contract MyToken is ERC20, Ownable {
+    constructor(uint256 initialSupply) ERC20("My Tutorial Token", "MTT") Ownable(msg.sender) {
+        // 部署者初始增发 initialSupply（带 18 位精度）
+        _mint(msg.sender, initialSupply * 10 ** decimals());
+    }
+
+    /// @notice 仅所有者可增发
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
+    }
+
+    /// @notice 任意持有者销毁自己的代币
+    function burn(uint256 amount) external {
+        _burn(msg.sender, amount);
+    }
+}
+</code></pre>
+<div class="note"><b>逐段讲解：</b>① <code>is ERC20, Ownable</code> 多重继承标准实现；② 构造函数把名称/符号传给 ERC20，并把 owner 设为部署者（0.8.20+ 的 Ownable 需显式传 msg.sender，不再默认）；③ <code>_mint</code> 是 OZ 内部函数，绕过 allowance 直接铸；④ <code>onlyOwner</code> 把关 mint；⑤ burn 不限 owner，因为烧的是调用者自己的币。</div>
+
+<h2 id="s8">8. 合约②：ERC721 NFT</h2>
+<pre><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title 教学用 NFT：每个 id 对应一个链下 metadata URI
+contract MyNFT is ERC721, Ownable {
+    uint256 public nextId;
+    string public baseURI;          // 如 "https://api.x.com/meta/"
+
+    constructor(string memory uri) ERC721("Tutorial NFT", "TNFT") Ownable(msg.sender) {
+        baseURI = uri;
+    }
+
+    /// @notice 增发一个 NFT 给 to
+    function mint(address to) external onlyOwner returns (uint256) {
+        uint256 id = nextId;
+        _safeMint(to, id);          // OZ 安全铸造（会检查 recipient 可收）
+        nextId++;
+        return id;
+    }
+
+    /// @notice 返回某 id 的 metadata 链接（OpenSea 等会来读）
+    function tokenURI(uint256 id) public view override returns (string memory) {
+        require(id &lt; nextId, "nonexistent");
+        return string(abi.encodePacked(baseURI, _toString(id), ".json"));
+    }
+
+    function _toString(uint256 v) internal pure returns (string memory) {
+        if (v == 0) return "0";
+        uint256 digits;
+        for (uint256 t = v; t &gt; 0; t /= 10) digits++;
+        bytes memory buf = new bytes(digits);
+        for (uint256 i = digits; i &gt; 0; i--) { buf[i-1] = bytes1(uint8(48 + v % 10)); v /= 10; }
+        return string(buf);
+    }
+}
+</code></pre>
+<div class="tip"><b>metadata 规范：</b>tokenURI 指向的 JSON 应包含 <code>name/image/description/attributes</code>，<code>image</code> 通常是 ipfs:// 链接。铸造后 OpenSea 等市场会自动抓取展示。</div>
+
+<h2 id="s9">9. 合约③：众筹合约</h2>
+<pre><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+/// @title 目标制众筹：达标放款给受益人，未达标可退款
+contract CrowdFund {
+    address public immutable beneficiary;
+    uint256 public immutable goal;
+    uint256 public immutable deadline;
+    mapping(address =&gt; uint256) public pledged;
+    uint256 public total;
+    bool public claimed;
+
+    constructor(address _beneficiary, uint256 _goal, uint256 _duration) {
+        beneficiary = _beneficiary;
+        goal = _goal;
+        deadline = block.timestamp + _duration;
+    }
+
+    function contribute() external payable {
+        require(block.timestamp &lt; deadline, "ended");
+        pledged[msg.sender] += msg.value;
+        total += msg.value;
+    }
+
+    function claim() external {
+        require(msg.sender == beneficiary, "not beneficiary");
+        require(block.timestamp &gt;= deadline, "not ended");
+        require(total &gt;= goal, "goal not met");
+        require(!claimed, "claimed");
+        claimed = true;
+        (bool ok, ) = beneficiary.call{value: total}("");
+        require(ok, "transfer failed");
+    }
+
+    function refund() external {
+        require(block.timestamp &gt;= deadline, "not ended");
+        require(total &lt; goal, "goal met");
+        uint256 amt = pledged[msg.sender];
+        require(amt &gt; 0, "nothing");
+        pledged[msg.sender] = 0;       // CEI：先清零再转账，防重入
+        (bool ok, ) = msg.sender.call{value: amt}("");
+        require(ok, "transfer failed");
+    }
+}
+</code></pre>
+<div class="note"><b>关键设计：</b>退款采用 Checks-Effects-Interactions——先把 <code>pledged[msg.sender]=0</code>（Effects）再 <code>call</code>（Interaction），即便被重入也因余额已清而无法二次取走。这也是下一篇安全模式强调的核心。</div>
+
+<h2 id="s10">10. 合约④：2-of-3 多签钱包</h2>
+<pre><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+/// @title 2-of-3 多签：任意 2 个 owner 确认后执行转账
+contract MultiSig2of3 {
+    address[3] public owners;
+    uint256 public constant REQUIRED = 2;
+    uint256 public nonce;
+
+    struct Tx { address to; uint256 value; bytes data; bool executed; }
+    mapping(uint256 =&gt; Tx) public txs;
+    mapping(uint256 =&gt; mapping(address =&gt; bool)) public confirmed;
+
+    event Submitted(uint256 id);
+    event Confirmed(uint256 id, address by);
+    event Executed(uint256 id);
+
+    constructor(address[3] memory _owners) {
+        owners = _owners;
+    }
+
+    modifier onlyOwner() {
+        bool ok = false;
+        for (uint256 i = 0; i &lt; 3; i++) if (owners[i] == msg.sender) ok = true;
+        require(ok, "not owner");
+        _;
+    }
+
+    function submit(address to, uint256 value, bytes calldata data) external onlyOwner returns (uint256 id) {
+        id = nonce++;
+        txs[id] = Tx(to, value, data, false);
+        emit Submitted(id);
+    }
+
+    function confirm(uint256 id) external onlyOwner {
+        require(!txs[id].executed, "executed");
+        require(!confirmed[id][msg.sender], "confirmed");
+        confirmed[id][msg.sender] = true;
+        emit Confirmed(id, msg.sender);
+
+        uint256 c;
+        for (uint256 i = 0; i &lt; 3; i++) if (confirmed[id][owners[i]]) c++;
+        if (c &gt;= REQUIRED) _execute(id);
+    }
+
+    function _execute(uint256 id) internal {
+        Tx storage t = txs[id];
+        t.executed = true;
+        (bool ok, ) = t.to.call{value: t.value}(t.data);
+        require(ok, "exec failed");
+        emit Executed(id);
+    }
+}
+</code></pre>
+<div class="note"><b>讲解：</b>submit 提出一笔待执行交易（含任意 data，可调用合约）；每位 owner 调 confirm 投票；当确认数达 2 自动执行。<code>nonce</code> 保证每笔提案唯一，避免重放替换。</div>
+
+<h2 id="s11">11. 合约⑤：最小 AMM（x*y=k，重点）</h2>
+<p>自动做市商（AMM）是 DeFi 的核心。这里实现一个最小但<strong>完整可编译</strong>的恒定乘积做市商：</p>
+<pre><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+/// @title 最小 AMM：恒定乘积 x*y=k，含 0.3% 手续费
+contract MiniAMM {
+    address public token;           // 配对资产（另一种为 ETH）
+    uint256 public reserveToken;    // 合约内 token 储备
+    uint256 public reserveEth;      // 合约内 ETH 储备
+    uint256 public totalLp;         // LP 总份额
+    mapping(address =&gt; uint256) public lpOf;
+
+    uint256 constant FEE_BPS = 30;  // 0.3% = 30/10000
+    uint256 constant BPS = 10000;
+
+    constructor(address _token) { token = _token; }
+
+    // ---- 流动性 ----
+    function addLiquidity(uint256 tokenAmt) external payable returns (uint256 lp) {
+        if (totalLp == 0) {
+            lp = address(this).balance;            // 首笔以 ETH 量为份额基准
+        } else {
+            // 按当前比例注入，保持 k 不变
+            uint256 ethAmt = msg.value;
+            uint256 needToken = reserveToken * ethAmt / reserveEth;
+            require(tokenAmt &gt;= needToken, "token short");
+            lp = totalLp * ethAmt / reserveEth;
+        }
+        _safeTransferFrom(token, msg.sender, address(this), tokenAmt);
+        reserveToken += tokenAmt;
+        reserveEth += msg.value;
+        lpOf[msg.sender] += lp;
+        totalLp += lp;
+    }
+
+    function removeLiquidity(uint256 lp) external returns (uint256 ethOut, uint256 tokenOut) {
+        require(lpOf[msg.sender] &gt;= lp, "no lp");
+        ethOut = reserveEth * lp / totalLp;
+        tokenOut = reserveToken * lp / totalLp;
+        lpOf[msg.sender] -= lp;
+        totalLp -= lp;
+        reserveEth -= ethOut;
+        reserveToken -= tokenOut;
+        _safeTransfer(token, msg.sender, tokenOut);
+        (bool ok, ) = msg.sender.call{value: ethOut}("");
+        require(ok, "eth out failed");
+    }
+
+    // ---- 交易 ----
+    function swapExactEthForToken() external payable returns (uint256 tokenOut) {
+        uint256 ethIn = msg.value;
+        // 扣除手续费后的有效输入
+        uint256 ethInAfter = ethIn * (BPS - FEE_BPS) / BPS;
+        uint256 newEth = reserveEth + ethInAfter;
+        // x*y=k =&gt; 新 token 储备 = k / newEth；输出 = 原储备 - 新储备
+        uint256 newToken = reserveEth * reserveToken / newEth; // 注：用 k/reserveEth
+        tokenOut = reserveToken - newToken;
+        require(tokenOut &gt; 0, "no out");
+        reserveEth = newEth;
+        reserveToken = newToken;
+        _safeTransfer(token, msg.sender, tokenOut);
+        emit Swap(msg.sender, ethIn, 0, 0, tokenOut);
+    }
+
+    function swapExactTokenForEth(uint256 tokenIn) external returns (uint256 ethOut) {
+        uint256 tokenInAfter = tokenIn * (BPS - FEE_BPS) / BPS;
+        uint256 newToken = reserveToken + tokenInAfter;
+        uint256 newEth = reserveToken * reserveEth / newToken;
+        ethOut = reserveEth - newEth;
+        require(ethOut &gt; 0, "no out");
+        _safeTransferFrom(token, msg.sender, address(this), tokenIn);
+        reserveToken = newToken;
+        reserveEth = newEth;
+        (bool ok, ) = msg.sender.call{value: ethOut}("");
+        require(ok, "eth out failed");
+        emit Swap(msg.sender, 0, tokenIn, ethOut, 0);
+    }
+
+    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
+        public pure returns (uint256)
+    {
+        uint256 inAfter = amountIn * (BPS - FEE_BPS) / BPS;
+        return reserveOut - reserveIn * reserveOut / (reserveIn + inAfter);
+    }
+
+    event Swap(address indexed who, uint256 ethIn, uint256 tokenIn, uint256 ethOut, uint256 tokenOut);
+
+    // ---- ERC20 内部安全封装 ----
+    function _safeTransfer(address t, address to, uint256 amt) internal {
+        (bool ok, bytes memory d) = t.call(abi.encodeWithSignature("transfer(address,uint256)", to, amt));
+        require(ok &amp;&amp; (d.length == 0 || abi.decode(d, (bool))), "transfer failed");
+    }
+    function _safeTransferFrom(address t, address from, address to, uint256 amt) internal {
+        (bool ok, bytes memory d) = t.call(abi.encodeWithSignature("transferFrom(address,address,uint256)", from, to, amt));
+        require(ok &amp;&amp; (d.length == 0 || abi.decode(d, (bool))), "transferFrom failed");
+    }
+}
+</code></pre>
+<div class="note"><b>逐段讲解：</b>① 核心不变量是 <code>reserveEth * reserveToken</code> 在扣费后保持恒定（此处用 <code>ethInAfter</code> 计入手续费，等价于 Uniswap V2 的 <code>(x+dx')(y-dy)=k</code>）；② addLiquidity 首笔以 ETH 量为份额基准，后续按现有比例注入防套利；③ getAmountOut 是通用兑换公式，与 swapExactTokenForEth 逻辑一致，可单独测试；④ 用底层 <code>call</code> 封装 ERC20 转账并对返回值做兜底（兼容不返回 bool 的老代币），等价于 OZ 的 SafeERC20；⑤ swap 函数先更新储备再发币（Effects 在 Interaction 前），但本合约不持有外部状态，重点是 math 正确。</div>
+
+<h2 id="s12">12. 工程实践：Foundry 测试与部署</h2>
+<h3>12.1 Foundry 测试</h3>
+<pre><code>// test/MyToken.t.sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {Test} from "forge-std/Test.sol";
+import {MyToken} from "src/MyToken.sol";
+
+contract MyTokenTest is Test {
+    MyToken token;
+    address alice = address(0xA11CE);
+    address bob = address(0xB0B);
+
+    function setUp() public {
+        // 每个测试前重新部署
+        token = new MyToken(1000); // 初始 1000 枚给部署者
+        vm.prank(alice);           // 下一笔调用假装是 alice
+        // 部署者给 alice 转 100
+        vm.prank(address(this));
+        token.transfer(alice, 100e18);
+    }
+
+    function testTransfer() public {
+        vm.prank(alice);
+        token.transfer(bob, 10e18);
+        assertEq(token.balanceOf(bob), 10e18);
+        assertEq(token.balanceOf(alice), 90e18);
+    }
+
+    function testMintOnlyOwner() public {
+        vm.prank(bob);                 // bob 不是 owner
+        vm.expectRevert();             // 期望 revert
+        token.mint(bob, 1e18);
+    }
+
+    function testFuzzTransfer(uint256 amt) public {
+        vm.assume(amt &lt;= 100e18);
+        vm.prank(alice);
+        token.transfer(bob, amt);
+        assertEq(token.balanceOf(bob), amt);
+    }
+}
+</code></pre>
+<table>
+<tr><th>作弊码</th><th>作用</th></tr>
+<tr><td>vm.prank(a)</td><td>下一笔调用伪造成 a</td></tr>
+<tr><td>vm.deal(a, n)</td><td>给 a 账户充 n wei</td></tr>
+<tr><td>vm.expectRevert()</td><td>断言下一笔调用 revert</td></tr>
+<tr><td>vm.warp(t) / vm.roll(n)</td><td>篡改 block.timestamp / number</td></tr>
+</table>
+<div class="tip"><b>invariant 简介：</b>Foundry 支持 invariant 测试（<code>InvariantTest</code> + <code>targetContract</code>），自动随机调用若干 handler 后断言「全局不变量」（如总供应量恒定），用于发现仅靠单元测试难触发的边界 bug。</div>
+
+<h3>12.2 部署脚本 forge script</h3>
+<pre><code>// script/Deploy.s.sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {Script} from "forge-std/Script.sol";
+import {MyToken} from "src/MyToken.sol";
+
+contract Deploy is Script {
+    function run() external {
+        uint256 pk = vm.envUint("DEPLOYER_PK");
+        vm.startBroadcast(pk);          // 用真实私钥广播
+        MyToken t = new MyToken(1_000_000);
+        vm.stopBroadcast();
+        console.log("MyToken deployed at", address(t));
+    }
+}
+
+// 本地 anvil 部署：
+// forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
+</code></pre>
+
+<h3>12.3 合约验证（Etherscan verify）</h3>
+<pre><code># 部署后在 Etherscan 验证源码（Foundry 内置）
+forge verify-contract &lt;合约地址&gt; src/MyToken.sol:MyToken \
+  --chain sepolia --etherscan-api-key $ETHERSCAN_API_KEY
+
+# 或部署时直接附带验证
+forge script script/Deploy.s.sol --rpc-url $RPC --broadcast --verify
+</code></pre>
+
+<h2 id="s13">13. 升级模式、gas 优化与安全模式</h2>
+<h3>13.1 升级模式：透明代理 vs UUPS</h3>
+<p>合约默认不可变。要「升级逻辑」，采用<strong>代理模式</strong>：用户始终与<strong>代理合约</strong>交互，代理用 <code>delegatecall</code> 把调用转发给<strong>实现合约</strong>；升级=换掉实现地址，存储仍在代理里。</p>
+<table>
+<tr><th>模式</th><th>升级函数位置</th><th>特点</th></tr>
+<tr><td>透明代理 Transparent</td><td>在代理合约</td><td>管理员与用户调用路由不同，安全但代理较大</td></tr>
+<tr><td>UUPS</td><td>在实现合约</td><td>代理极小、gas 低；升级逻辑需写进实现，老实现无升级函数则永久锁死</td></tr>
+</table>
+<pre><code>// 最小 UUPS 实现（示意，生产用 OZ 的 UUPSUpgradeable）
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
+contract Box is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    uint256 public value;
+    function initialize() public initializer {
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+    }
+    function setValue(uint256 v) external onlyOwner { value = v; }
+    // 升级权限：仅 owner
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+}
+</code></pre>
+<div class="warn"><b>存储冲突陷阱：</b>delegatecall 用<strong>代理的存储布局</strong>。若实现合约新增状态变量插在中间，会与代理原有布局错位，覆盖数据。规则：① 升级时只在末尾追加新变量；② 绝不要改已有变量类型/顺序；③ 用 OZ upgradeable 系列（变量声明顺序固定）。这是代理升级头号事故源。</div>
+
+<h3>13.2 gas 优化清单</h3>
+<table>
+<tr><th>技巧</th><th>原因</th></tr>
+<tr><td>storage 变量打包（同 slot 的 uint128 组合）</td><td>一次 SSTORE 写多个</td></tr>
+<tr><td>用 immutable / constant</td><td>不占 storage，直接编进字节码</td></tr>
+<tr><td>external 参数用 calldata</td><td>不拷贝到内存</td></tr>
+<tr><td>短路：把易假条件放前</td><td>提前 return 省计算</td></tr>
+<tr><td>自定义 error 替代字符串</td><td>revert 数据更短</td></tr>
+<tr><td>循环用 &lt;= 上限缓存、避免越界读 storage</td><td>减少 SLOAD</td></tr>
+</table>
+
+<h3>13.3 安全模式：CEI、重入、tx.origin、approve、闪电贷</h3>
+<p><b>① Checks-Effects-Interactions：</b>先校验、再改本合约状态、最后才做外部调用（如转账），从根本上杜绝重入。</p>
+<pre><code>// 重入攻击演示：下面写法危险（先转账后改状态）
+function unsafeWithdraw(uint256 amt) external {
+    (bool ok, ) = msg.sender.call{value: amt}(""); // 外部调用先发生
+    require(ok);
+    balance[msg.sender] -= amt;                       // 攻击者可在此被回调再次 withdraw
+}
+
+// 修复：先改状态再转账 + ReentrancyGuard
+function safeWithdraw(uint256 amt) external nonReentrant {
+    require(balance[msg.sender] &gt;= amt, "low");
+    balance[msg.sender] -= amt;   // Effects 先完成
+    (bool ok, ) = msg.sender.call{value: amt}("");
+    require(ok);
+}
+</code></pre>
+<p><b>② tx.origin 钓鱼：</b>不要用 <code>tx.origin</code> 做权限判断——它是最初发起者，攻击合约可中转调用你的合约从而绕过。改用 <code>msg.sender</code>。</p>
+<pre><code>function bad() external { require(tx.origin == owner); ... }   // 危险：可被中间合约绕过
+function good() external { require(msg.sender == owner); ... } // 正确
+</code></pre>
+<p><b>③ approve 无限授权风险：</b>ERC20 的 <code>approve(spender, type(uint256).max)</code> 虽方便，但一旦 spender 合约有漏洞，攻击者能转走你全部余额。建议：按需授权、用 <code>permit</code>（EIP-2612）一次性授权、定期用 revoke.cash 收回。</p>
+<p><b>④ 闪电贷攻击面：</b>闪电贷让攻击者在「一笔交易内」借到巨额资金，用于操纵预言机、拉高价格后砸盘等。防御：用 TWAP/Chainlink 等抗操纵喂价、设交易额/滑点限制。</p>
+
+<h3>13.4 Slither 静态分析</h3>
+<pre><code># 安装并扫描合约目录
+pip install slither-analyzer
+slither src/MyToken.sol
+
+# 常用检测器：重入、未初始化变量、危险的 delegatecall
+slither . --detect reentrancy-eth,uninitialized-state
+</code></pre>
+<div class="tip"><b>流程建议：</b>本地 <code>forge test</code> + <code>slither</code> 后再提交审计；CI 里把两者设为必过门禁。重入/TX.ORIGIN/未检查返回值等高危项应零容忍。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 Remix 部署第 7 节的 MyToken，在 JS VM 里 mint 给另一个账户并查询余额。</li>
+<li>把本篇 5 个合约放进 Foundry 项目（forge init），<code>forge build</code> 全过；为 MyToken 写 setUp + assertEq 测试并 <code>forge test</code> 通过。</li>
+<li>在 anvil 上部署 MiniAMM，用 cast 给合约转测试 ETH，调用 addLiquidity 与 swapExactEthForToken，验证储备与 getAmountOut 一致。</li>
+<li>为 CrowdFund 写一个重入攻击测试：构造恶意 recipient 合约在 receive 里回调 refund，证明未用 CEI 时的危害，再用 CEI 修复后复测通过。</li>
+<li>对 Box 用 UUPS 做一次「升级」（部署 V2 调用 upgradeTo），观察 storage 不变而逻辑变了；故意把 V2 的变量顺序打乱，观察存储冲突。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能搭建 Remix / Foundry 环境并跑通 compile + test</li>
+<li>能解释 storage/memory/calldata 的选择与典型坑</li>
+<li>能正确用 require/自定义 error、event indexed、mapping 遍历陷阱</li>
+<li>能写出继承、接口、库、低级 call/delegatecall 的示例并说明风险</li>
+<li>能用 OZ 实现 ERC20/721 并理解 Ownable/ReentrancyGuard/SafeERC20</li>
+<li>能独立编译本篇 5 个合约，并口述 MiniAMM 的 x*y=k 数学</li>
+<li>会用 forge test 的 vm 作弊码、fuzz，并理解代理升级与存储冲突</li>
+<li>能列举重入/tx.origin/无限授权/闪电贷风险并给出缓解</li>
+</ul></div>
+
+<div class="pager"><a href="04-eth.html"><b>上一篇</b>← ETH 篇 I：概念与钱包开发</a><a class="next" href="06-eth-defi.html"><b>下一篇</b>ETH 篇 III：DeFi 原理与交互实战 →</a></div>
+</main></body></html>

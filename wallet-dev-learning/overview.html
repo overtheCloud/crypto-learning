@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="tMRWyUx4pasuzPbtZPj5D0">
+<head data-page-node-id="K9F4DhW7FYB2DgJmL1e5IQ">
+<meta charset="UTF-8" data-page-node-id="4MwASTfsFlcIGTq5PhgvzF">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RAO4BLFlJ7cGeKLmtzvjAT">
+<title>数字货币钱包开发学习笔记 —— 从入门到精通（BTC / ETH / SOL / TRON / SUI）</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --text: #1f2430;
+    --text-2: #4a5265;
+    --text-3: #8a92a6;
+    --border: #e4e7ee;
+    --accent: #2563eb;
+    --accent-soft: #eef4ff;
+    --btc: #f7931a;
+    --eth: #627eea;
+    --sol: #9945ff;
+    --tron: #e8330f;
+    --sui: #4da2ff;
+    --code-bg: #f2f4f8;
+    --ok: #16a34a;
+    --warn: #d97706;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 20px; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.75; font-size: 15px;
+  }
+  .layout { display: flex; max-width: 1280px; margin: 0 auto; }
+  /* Sidebar */
+  .sidebar {
+    width: 250px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); background: var(--panel); padding: 24px 14px 40px;
+  }
+  .sidebar h1 { font-size: 15px; margin-bottom: 4px; }
+  .sidebar .sub { font-size: 12px; color: var(--text-3); margin-bottom: 18px; }
+  .sidebar nav a {
+    display: block; padding: 6px 10px; border-radius: 8px; color: var(--text-2);
+    text-decoration: none; font-size: 13px; margin-bottom: 2px;
+  }
+  .sidebar nav a:hover { background: var(--accent-soft); color: var(--accent); }
+  .sidebar nav a.sub-item { padding-left: 26px; font-size: 12.5px; }
+  .sidebar .nav-group { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; margin: 16px 10px 4px; font-weight: 600;}
+  /* Main */
+  .main { flex: 1; min-width: 0; padding: 32px 40px 80px; }
+  .hero { background: linear-gradient(135deg, #1e293b 0%, #312e81 100%); color: #fff; border-radius: 16px; padding: 36px 36px; margin-bottom: 36px; }
+  .hero h1 { font-size: 26px; margin-bottom: 10px; }
+  .hero p { color: #c7d2fe; font-size: 14px; max-width: 720px; }
+  .hero .chips { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .hero .chip { font-size: 12px; padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,.14); }
+  section { margin-bottom: 56px; }
+  h2.sec {
+    font-size: 21px; padding-bottom: 10px; border-bottom: 2px solid var(--border);
+    margin-bottom: 22px; display: flex; align-items: center; gap: 10px;
+  }
+  h2.sec .tag { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: #fff; }
+  h3 { font-size: 17px; margin: 28px 0 12px; }
+  h4 { font-size: 15px; margin: 20px 0 8px; }
+  p { margin-bottom: 10px; color: var(--text-2); }
+  ul, ol { padding-left: 22px; margin-bottom: 12px; color: var(--text-2); }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--text); }
+  code {
+    background: var(--code-bg); padding: 2px 6px; border-radius: 5px;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.8px; color: #d6336c;
+  }
+  pre {
+    background: #1e2430; color: #dbe2f0; border-radius: 10px; padding: 16px 18px;
+    overflow-x: auto; margin: 12px 0 16px; font-size: 12.8px; line-height: 1.65;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+  .cmt { color: #7c88a1; }
+  /* Cards & tables */
+  .grid { display: grid; gap: 14px; margin: 14px 0; }
+  .grid.c2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .grid.c3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+  }
+  .card h4 { margin-top: 0; }
+  .card p { font-size: 13.5px; margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 10px; overflow: hidden; margin: 14px 0 20px; font-size: 13.5px; }
+  th { background: #eef1f6; text-align: left; padding: 10px 12px; font-size: 12.5px; color: var(--text-2); }
+  td { padding: 10px 12px; border-top: 1px solid var(--border); color: var(--text-2); vertical-align: top; }
+  td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+  tr:hover td { background: #fafbfd; }
+  /* Phase / roadmap */
+  .phase { display: flex; gap: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  .phase .num {
+    width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: var(--accent-soft); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;
+  }
+  .phase h4 { margin: 2px 0 4px; }
+  .phase p { font-size: 13.5px; margin-bottom: 4px; }
+  .phase .meta { font-size: 12px; color: var(--text-3); }
+  .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 16px; font-size: 13.5px; color: #92400e; margin: 14px 0; }
+  .note b { color: #78350f; }
+  .tip { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px; font-size: 13.5px; color: #166534; margin: 14px 0; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 5px; margin-left: 6px; font-weight: 400; }
+  .badge.free { background: #dcfce7; color: #15803d; }
+  .badge.cn { background: #dbeafe; color: #1d4ed8; }
+  .badge.book { background: #f3e8ff; color: #7e22ce; }
+  .badge.video { background: #fee2e2; color: #b91c1c; }
+  @media (max-width: 900px) { .sidebar { display: none; } .main { padding: 20px; } }
+</style>
+
+<style id="nav-drawer-css">
+.nav-toggle{display:none}
+.nav-fab{position:fixed;right:22px;bottom:22px;z-index:90;background:#2563eb;color:#fff;padding:10px 18px;border-radius:999px;box-shadow:0 4px 14px rgba(37,99,235,.35);cursor:pointer;font-size:13.5px;font-weight:600;user-select:none}
+.nav-fab:hover{background:#1d4ed8}
+.nav-mask{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:98;opacity:0;pointer-events:none;transition:opacity .2s}
+.nav-drawer{position:fixed;top:0;right:-330px;width:300px;max-width:85vw;height:100vh;background:#fff;z-index:99;box-shadow:-4px 0 24px rgba(15,23,42,.15);transition:right .25s;overflow-y:auto;padding-bottom:30px}
+.nav-toggle:checked~.nav-drawer{right:0}
+.nav-toggle:checked~.nav-mask{opacity:1;pointer-events:auto}
+.nav-drawer-head{position:sticky;top:0;background:#fff;z-index:1;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e4e7ee;font-size:14px}
+.nav-close{cursor:pointer;font-size:20px;color:#8a92a6;padding:0 6px;line-height:1}
+.nav-close:hover{color:#2563eb}
+.nav-drawer .nav-group{font-size:11px;color:#8a92a6;letter-spacing:.08em;font-weight:700;padding:14px 18px 4px;text-transform:uppercase;margin:0}
+.nav-drawer nav a{display:block;padding:7px 18px;font-size:13px;color:#4a5265;text-decoration:none}
+.nav-drawer nav a:hover{background:#eef4ff;color:#2563eb}
+.nav-drawer nav a.cur{background:#eef4ff;color:#2563eb;font-weight:600;border-left:3px solid #2563eb;padding-left:15px}
+</style>
+
+</head>
+<body data-page-node-id="1BGUERZJUwnZEy0aGyzrfU">
+<input type="checkbox" id="nav-toggle" class="nav-toggle" data-page-node-id="ke7PiqvrnU2wzKMknAifFv">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录" data-page-node-id="JFhfR6Cpw8wMcya3FgOD8f">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask" data-page-node-id="mQn5w94vKAHZyIQac7xDtW"></label>
+<div class="nav-drawer" data-page-node-id="0duyulbxJuW4hXFMEBIACC">
+<div class="nav-drawer-head" data-page-node-id="12f1Fwmo8ssi8jHP5nDe08"><b data-page-node-id="xqcn3KrwuoFhF9KKKGoq4f">系列教程目录</b><label for="nav-toggle" class="nav-close" data-page-node-id="mS5prcPaG424HdrdH7MCcW">&times;</label></div>
+<nav data-page-node-id="B1nHRbg8dhZVNAlkVcF8O8">
+<div class="nav-group" data-page-node-id="XlAi1LffIYZul8XiYzYw8q">总站</div>
+<a href="index.html" data-page-node-id="iTXNLUZZqx0NSaH0NlAR2A">课程目录（门户）</a>
+<a href="overview.html" class="cur" data-page-node-id="FyOxdUVrCEd6UInHAsAFBC">系列总览（速查版）</a>
+<div class="nav-group" data-page-node-id="b7FYJqDqlFiybAPcHRDziy">公共基础</div>
+<a href="00-common.html" data-page-node-id="0NtlpKSxtUgWgrVWu2R1Hm">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group" data-page-node-id="WeovT9HA2BtIgMNbhDthq8">Bitcoin</div>
+<a href="01-btc.html" data-page-node-id="bkniCnYzgTGoRVL0ilG0Bx">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html" data-page-node-id="s7WFJaBMHOkyIrUBEFJimZ">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html" data-page-node-id="h3lUgAc1UdmKiv7dDt9Nft">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group" data-page-node-id="dIa3BH40bay4OpD27wpwmf">Ethereum</div>
+<a href="04-eth.html" data-page-node-id="59Kox9m8UCO1IVk8YG41cS">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html" data-page-node-id="CEi0zjUCACPJwbjrupdUii">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html" data-page-node-id="XqA3JOBsRIT0O0Sy5G5dRq">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group" data-page-node-id="yGqyV24FjEB0ftcFdRcBXI">Solana</div>
+<a href="07-sol.html" data-page-node-id="8427bHeBkL207rXvLlXjZU">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html" data-page-node-id="HA6AykuItsE2KgDjle1S4C">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html" data-page-node-id="EbGZqMACLzcvdO480A3p0X">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group" data-page-node-id="Ll3eS9RTol68WGK69MfPWD">TRON</div>
+<a href="10-tron.html" data-page-node-id="DzvISuQwlFjK38fKRt3fw4">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html" data-page-node-id="cu8vK5TV0RLMzQxSKIYKBg">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html" data-page-node-id="T1qSkEgVOlrHRAGOjS62px">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group" data-page-node-id="MS5mSYE2Tn7nVJrRCFTqG3">Sui</div>
+<a href="13-sui.html" data-page-node-id="55M97BkyuDd5XZP5gfNy9W">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html" data-page-node-id="fm6nIOHTi9iPFCBCsgGof0">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html" data-page-node-id="lzGB4pAnVnr5b8MQbiFxgA">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<div class="layout" data-page-node-id="ntvx9xyiwOdJ5dXbFYpLWy">
+
+<!-- ============ 侧边目录 ============ -->
+<aside class="sidebar" data-page-node-id="gB0t3JAYFLBKPRumOW4XhO">
+  <h1 data-page-node-id="cf7mIFYmAw616CmElEtkpO">钱包开发学习笔记</h1>
+  <div class="sub" data-page-node-id="eMi75ZL57hil3kO9QsEACT">BTC · ETH · SOL · TRON · SUI</div>
+  <nav data-page-node-id="GzVX9U3TzWpER3Baxl3Ka6">
+    <div class="nav-group" data-page-node-id="fClAkCDRUxppIOEk7vkuOQ">总览</div>
+    <a href="#roadmap" data-page-node-id="hlDFpwzbYfu2itnWIeDijG">① 学习路线图</a>
+    <a href="#common" data-page-node-id="YB0EmnRnx4ws9S1zJwFso8">② 通用基础（必学）</a>
+    <div class="nav-group" data-page-node-id="sBNDceDeV8Y1VbACqI5hUe">分链深入</div>
+    <a href="#btc" data-page-node-id="OI27jsjodb8w7hE2yqjG1B">③ Bitcoin (BTC)</a>
+    <a href="#eth" data-page-node-id="8WUweqvgxXdbOWq2wvKCGI">④ Ethereum (ETH)</a>
+    <a href="#sol" data-page-node-id="V9tDDtUdubkBuVFluzn5UP">⑤ Solana (SOL)</a>
+    <a href="#tron" data-page-node-id="esi4aNwxXl0H5l7mpRtVGB">⑥ TRON</a>
+    <a href="#sui" data-page-node-id="lW88pFGA0BZHyQfKPIHVIJ">⑦ Sui</a>
+    <div class="nav-group" data-page-node-id="wC0v04Vutb2Ow4qcHju2Is">精通</div>
+    <a href="#mastery" data-page-node-id="ka5vvTjAHy10L7f6AMqxMP">⑧ 进阶与精通</a>
+    <a href="#projects" data-page-node-id="LGwLF4EYXz8s5HYDqMOxCA">⑨ 实战项目清单</a>
+    <a href="#resources" data-page-node-id="6TZANs0CcDAgKpINESalT2">⑩ 资源汇总</a>
+  </nav>
+</aside>
+
+<!-- ============ 正文 ============ -->
+<main class="main" data-page-node-id="ASOWg3UahECILJl2JDDGzm">
+
+<div class="hero" data-page-node-id="UQsALVqcvmUsXCszPxNCWY">
+  <p style="margin-bottom:12px;" data-page-node-id="C8x5dksDHDMDVkiqLPituj"><a href="index.html" style="color:#93c5fd;" data-page-node-id="mjiOnM5pzIhbD7OWvUjVIM">← 返回课程目录（16 篇完整教程入口）</a></p>
+  <h1 data-page-node-id="gbFgXp1TCThHGqbIsRRXJR">数字货币钱包开发：从入门到精通（速查总览）</h1>
+  <p data-page-node-id="nuNMAqMK867kzSYszIpMKn">覆盖 BTC、ETH、SOL、TRON、SUI 五大公链的<b data-page-node-id="A4Zln6FauCysvV7appL4ry">基础概念 → 钱包开发 → 智能合约 → DeFi</b> 完整学习路径。每一步均附行业最经典的教程与官方文档，配套代码示例与实战项目。</p>
+  <div class="chips" data-page-node-id="eHES0HJWlCOWcCZijQ7dui">
+    <span class="chip" data-page-node-id="o26wfFMO9867lhysIdaNwq">🔑 密钥与 HD 钱包</span>
+    <span class="chip" data-page-node-id="aa6a3ToWFf2VugjMSwVux5">⚡ 交易构建与签名</span>
+    <span class="chip" data-page-node-id="WscenurlwpgjYQR0oaaVaH">📜 智能合约</span>
+    <span class="chip" data-page-node-id="CC47XddcP8jt3aKSthQk2o">💸 DeFi 协议</span>
+    <span class="chip" data-page-node-id="ETolkZQYoSCM7Dvrm6LIPW">🛡️ 安全审计</span>
+  </div>
+</div>
+
+<!-- ================= 路线图 ================= -->
+<section id="roadmap" data-page-node-id="JeVD9MeJiGeoCNgrBkZcLq">
+  <h2 class="sec" data-page-node-id="0Pl2NmmYAIJfpjLJk7pBCP">① 从入门到精通：总路线图 <span class="tag" style="background:var(--accent)" data-page-node-id="DyN3DPUuJWkw3IQRUUpQLu">ROADMAP</span></h2>
+  <p data-page-node-id="FkSQ7gVOoYXCRpzDvDRgOh">整个路径分为 8 个阶段，建议按顺序推进。前三阶段（通用基础 + BTC + ETH）是所有链的根基，学完后 SOL / TRON / SUI 可以按兴趣与业务需要并行学习——TRON 和 ETH 同为 EVM/Solidity 体系（学完 ETH 几乎免费送 TRON），SOL 和 SUI 则需要新的语言与思维模型。</p>
+
+  <div class="phase" data-page-node-id="EM6otMlXbF2uPODcSCDUbE">
+    <div class="num" data-page-node-id="qamn4GNu8lqb9GEeias8e1">P0</div>
+    <div data-page-node-id="aIaGHwqs9SJ0FH4C4fWWBU">
+      <h4 data-page-node-id="CbhtfdJ5XceV2BAYGkQngU">前置能力（1–2 周）</h4>
+      <p data-page-node-id="aqnpJ22FpiVxNuEa0z3krB">JavaScript/TypeScript（Node.js）、Python 基础；了解 Rust（SOL/SUI 需要）；Git 与命令行。不需要密码学背景，P1 会补。</p>
+      <p class="meta" data-page-node-id="UjEbLoMjF8PvafUJltMMMl">产出：能独立写 Node.js 脚本、读懂 Rust 基本语法</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="N8otKbW7o2HH3eTThq7Vcr">
+    <div class="num" data-page-node-id="3BT0ICQ4HbwjhA4E48byV3">P1</div>
+    <div data-page-node-id="iPAcVwjnxBxFcnFBwGYJnX">
+      <h4 data-page-node-id="3HFtlHabEZ2mTRACxHr7qt">区块链与钱包通用原理（2–3 周）★ 必学</h4>
+      <p data-page-node-id="Jzr6J7dHET8AwECE1Ep45c">哈希 / 椭圆曲线 secp256k1 / ed25519 / 数字签名；助记词 BIP39、分层确定性钱包 BIP32、多币种路径 BIP44/84；UTXO 模型 vs 账户模型 vs 对象模型；地址编码（Base58 / Bech32 / hex / Sui Bech32）。</p>
+      <p class="meta" data-page-node-id="QrKjPqeabFHDuKBkIDqoED">经典教程：《Mastering Bitcoin》前 5 章 + learnmeabitcoin.com；产出：手写一个「助记词 → 多链地址」生成器</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="SxgE9ngHkQB5U1ZzyzSQMY">
+    <div class="num" data-page-node-id="BV7S6lxzYT6XOb4eW70Apc">P2</div>
+    <div data-page-node-id="wbB4QqPdNpRATbFoW69oJl">
+      <h4 data-page-node-id="7tcA6mavEbjX7PxQzZIYDt">Bitcoin 深入（3–4 周）</h4>
+      <p data-page-node-id="bMZWrPoSvjSZBpyCfCNojT">UTXO、脚本语言、隔离见证、PSBT；bitcoinjs-lib / python-bitcoinlib 实战；测试网转账。</p>
+      <p class="meta" data-page-node-id="PWvFSCnyuOMEDJzUEQ0gj9">经典教程：《Mastering Bitcoin》全书 + 《Programming Bitcoin》；产出：命令行钱包（生成/查余额/构建交易/广播）</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="qSAN8hOvVqagxFEwNG3SNR">
+    <div class="num" data-page-node-id="9gaCnyzmg8LDLAFa1MBFbP">P3</div>
+    <div data-page-node-id="uN1098h2ls7yygYYj0d00T">
+      <h4 data-page-node-id="oj2desPQrnYrOhv9bTU1iG">Ethereum 与 EVM 体系（6–8 周）★ DeFi 主战场</h4>
+      <p data-page-node-id="2MmE7J4Rm8u6ggfp5rqwOG">账户、Gas、EVM、Solidity、ERC 标准；ethers.js/viem + Foundry/Hardhat 工具链；EIP-155 / EIP-712 签名；DeFi：DEX/AMM、借贷、预言机。TRON 复用本阶段 90% 知识。</p>
+      <p class="meta" data-page-node-id="xr4XrXHgYtOEYKJJUaLpVy">经典教程：《Mastering Ethereum》+ CryptoZombies + Cyfrin Updraft + Ethernaut；产出：发行 ERC-20、写一个 Mini-DEX</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="OYhGpYZqExppMiDipBqMdr">
+    <div class="num" data-page-node-id="TuriGhZxgK1p9Bs49hiTnM">P4</div>
+    <div data-page-node-id="1WcCaVucleFLviPms2UxPP">
+      <h4 data-page-node-id="SSCP48ovxxi9cbBBiPyVE0">Solana（4–6 周）</h4>
+      <p data-page-node-id="sYX4jys57X0AFtADxrnSuh">账户模型（Program/Account/PDA/Rent）、Rust、Anchor 框架、SPL Token、@solana/web3.js（v1 与 v2）、钱包适配器；Jupiter / Orca 等 DeFi。</p>
+      <p class="meta" data-page-node-id="Hy0FwNxOSVwnq8XV7B1JIv">经典教程：Solana 官方课程 + Anchor Book + Paulx Escrow 教程；产出：Anchor 全栈 dApp（含 PDA + 前端）</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="SpVn36YCOVQEMrokYPDZF9">
+    <div class="num" data-page-node-id="5vqFfcDAbV8I6aiOsuVEYD">P5</div>
+    <div data-page-node-id="FRjMwOLb6YgNxlEnn0jD51">
+      <h4 data-page-node-id="ILEM2LawVg8N3u4IjsVBGw">TRON（2–3 周，EVM 体系快速迁移）</h4>
+      <p data-page-node-id="ZPkFq5rPceHU7iJCaU2PdU">与以太坊的差异：TVM、Energy/Bandwidth 资源模型、TRC-20（最大 USDT 发行链）、TronBox / TronWeb / TronLink；JustLend 等 DeFi。</p>
+      <p class="meta" data-page-node-id="EpyVeBR6IOsvOP1kwazHVK">经典教程：developers.tron.network 官方文档（有中文版）；产出：Shasta 测试网部署 DApp + TRC-20 转账脚本</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="KpaVmnBq3vGw8cyyLdp5cP">
+    <div class="num" data-page-node-id="4afqKsluQ3oDFNkQ9p7nR1">P6</div>
+    <div data-page-node-id="eFvqFr6QvtVxEBmnlcjcGZ">
+      <h4 data-page-node-id="eRvI15pCsCwxl7NpO6Qgre">Sui（4–5 周）</h4>
+      <p data-page-node-id="8apHLR9DFDlPmBFmL4uUfB">Move 语言、对象模型（Owned/Shared/Immutable）、PTB 可编程交易块、zkLogin；@mysten/dapp-kit；Cetus / DeepBook 等 DeFi。</p>
+      <p class="meta" data-page-node-id="a9nSMGuCM3lmROSRiD0Q6a">经典教程：Sui 官方文档 + Sui Move Intro Course + Move Book；产出：发布 Move 包 + React 前端 dApp</p>
+    </div>
+  </div>
+  <div class="phase" data-page-node-id="UKoKXBiXFNHJAoWnKaiDp3">
+    <div class="num" data-page-node-id="U3dBtHhw9187TbYGpPoNn0">P7</div>
+    <div data-page-node-id="QSBSC5e3TuFrKZAgRiytTU">
+      <h4 data-page-node-id="f0GoFc68QxmPU90chktkCl">精通：安全、架构与跨链（持续）</h4>
+      <p data-page-node-id="8c0GdrV5Oj5rfLYRPypieM">智能合约安全与审计（重入、整数溢出、私钥管理漏洞）、MPC / AA（ERC-4337）钱包、跨链桥原理、Trust Wallet Core 多链钱包源码研读。</p>
+      <p class="meta" data-page-node-id="NvcrV3IIFMuN804BGJ958N">经典教程：Damn Vulnerable DeFi + Secureum + RareSkills；产出：一个支持 3+ 链的多币种钱包 Demo</p>
+    </div>
+  </div>
+
+  <div class="note" data-page-node-id="AYSaOxdFPjvUjvCueGd3mR"><b data-page-node-id="YOESDEcZ7BAsz81JlL6vxX">时间预估：</b>全职学习约 4–5 个月完成 P0–P6；业余时间（每天 1–2 小时）约 10–12 个月。<b data-page-node-id="eCCYhlXR5zmzAIUPvTYrtP">建议主线 ETH 优先</b>——EVM 生态的资料量、工具链成熟度、DeFi 深度远超其他链，且 TRON 直接复用。</div>
+</section>
+
+<!-- ================= 通用基础 ================= -->
+<section id="common" data-page-node-id="dFWXm4FneXuq8Djbv5uRbL">
+  <h2 class="sec" data-page-node-id="0a1XcpVi2xT0zVjoBXBiaL">② 通用基础：所有链共用 <span class="tag" style="background:#0f766e" data-page-node-id="fjrJts49mbDDHDDwYuIcgD">FOUNDATIONS</span></h2>
+
+  <h3 data-page-node-id="scnCUxPEMACyVpdZBiVUgQ">2.1 必须掌握的密码学</h3>
+  <div class="grid c3" data-page-node-id="WU0ZxOPBuNETlND2FUFs7V">
+    <div class="card" data-page-node-id="uB62Vtg7d711ffFWUcFlUZ"><h4 data-page-node-id="aoqRVKG27s6x6mN6I3ojs1">哈希函数</h4><p data-page-node-id="RhvsAGuFDx78wXreRpH7iU">SHA-256、Keccak-256、RIPEMD-160。用途：区块链接、地址生成、签名摘要。特性：单向、抗碰撞、雪崩效应。</p></div>
+    <div class="card" data-page-node-id="WPtvpbnVrRSU685T6FtWb5"><h4 data-page-node-id="uQnQgbCoxXtWBDQ2oR8TdT">椭圆曲线签名</h4><p data-page-node-id="tGKSC1yxLlEojt8QwCNGoa"><b data-page-node-id="Qvtn9FRsJYYiTEQrh1vhJQ">secp256k1</b>（BTC/ETH/TRON：256 位私钥 → 公钥）、<b data-page-node-id="0JwCfBOo4PU6zHW4Ze7fMA">ed25519</b>（SOL/SUI：更快、签名即公钥可推导）。私钥本质是 256 位随机数。</p></div>
+    <div class="card" data-page-node-id="w1bXoHjYxciDjq0ajSmz5G"><h4 data-page-node-id="HGluGDDzus0ME1sbLLaqOM">数字签名</h4><p data-page-node-id="CAC9HIM2fYEoYLeZXxopq2">ECDSA（r, s, v）与 Schnorr / EdDSA。签名证明「私钥持有者授权了这笔交易」，且不泄露私钥。EIP-712 结构化签名是钱包开发高频考点。</p></div>
+  </div>
+
+  <h3 data-page-node-id="uq4bkDve90BSzRlOcCEpLj">2.2 HD 钱包：BIP32 / BIP39 / BIP44 —— 钱包开发的核心</h3>
+  <p data-page-node-id="MSQJYByb96X1rd9WkZruwM">现代钱包（MetaMask、TronLink、Phantom、Slush）全部基于同一套标准：<b data-page-node-id="GXyLu7hif3G0ekFCfosxEe">一个助记词派生所有链的所有地址</b>。</p>
+  <ul data-page-node-id="vNS20e3TeuzHgyxK00eqSZ">
+    <li data-page-node-id="zjYC5DqbS5rf3imzjFRQzg"><b data-page-node-id="sOeT2u0omGqQMUBhw40VLi">BIP39</b>：128/256 位熵 → 校验 → 2048 词表映射为 12/24 个助记词；助记词 + 密码短语经 PBKDF2-HMAC-SHA512（2048 轮）拉伸为 512 位种子。</li>
+    <li data-page-node-id="8RIW1uGS0ufRfdhkj7u3Rf"><b data-page-node-id="1XPDAeHFZyrdk93Uc8Wl4x">BIP32</b>：种子经 HMAC-SHA512 生成主密钥 + 链码；父密钥可派生子密钥（ hardened ' 与 normal），形成树状结构；<code data-page-node-id="dmr3mLLWL5sCp6sZEZqbE5">xpub/xprv</code> 扩展密钥可只凭公钥派生地址（观察钱包原理）。</li>
+    <li data-page-node-id="uZS7QFXS85DAK07O8mn6jA"><b data-page-node-id="joXAWeNWJHrqcL5o1gHvUD">BIP44/84/86</b>：标准化派生路径 <code data-page-node-id="9DFrMKoRgGwnZAe1qFfuQA">m / purpose' / coin_type' / account' / change / index</code>，coin_type 由 SLIP-44 定义。</li>
+  </ul>
+  <table data-page-node-id="t0g3oRdmpLhnpcm6fIkHav">
+    <tr data-page-node-id="YTyDDWrwChN4qOjO5BIuDA"><th data-page-node-id="xMt1uWuYPpDPHCT996DVtH">链</th><th data-page-node-id="CnV1PF3CEaCn7DSDnlF5cB">曲线</th><th data-page-node-id="dmPjOs4UswKbWi52uqje50">派生路径（coin_type）</th><th data-page-node-id="YMF4MkaqhhSTEBiTjw4kS6">地址格式示例</th></tr>
+    <tr data-page-node-id="7tzs8hNensTckkhyqjqnfF"><td data-page-node-id="l0ELoEk9prQEbFB5C6dlTq">BTC（原生隔离见证）</td><td data-page-node-id="cwhuDEBBHFYgz4VqjN6MWg">secp256k1</td><td data-page-node-id="WDn74rXk6m8jnXUCoDgPK6">m/84'/0'/0'/0/0</td><td data-page-node-id="iOxbEwdzArcJUGN5bLXk40">bc1q…（Bech32）</td></tr>
+    <tr data-page-node-id="bM3rACBuMMrzzLVx9sQJlC"><td data-page-node-id="ASxdYKYdgkG4CWpMpfLgBE">BTC（传统）</td><td data-page-node-id="6aO1sRc8o1LezcoCMjmgLk">secp256k1</td><td data-page-node-id="w1h8IHmW8O5OL8qyz00VXw">m/44'/0'/0'/0/0</td><td data-page-node-id="Lh6HxIpZ60VPhFHXwufbxr">1A1zP…（Base58, P2PKH）</td></tr>
+    <tr data-page-node-id="4ToAAOZTECGvZpKY73filF"><td data-page-node-id="Dp7FsdBWp3gFmxOmUHh2cM">ETH</td><td data-page-node-id="eKNuVcbJxR4WVqM5T9tsdS">secp256k1</td><td data-page-node-id="aBDA416DWCm2ptiCtprk1V">m/44'/60'/0'/0/0</td><td data-page-node-id="DBRRqBEVIJBOdPYoKDuTlZ">0x…40 位 hex（公钥 Keccak-256 后 20 字节）</td></tr>
+    <tr data-page-node-id="C4sMPPcpU14dyQwznedMix"><td data-page-node-id="2jFi7URUAMEqUZvk5b0E4b">TRON</td><td data-page-node-id="rRjLMIt7AjwjGAJTXF4ECg">secp256k1</td><td data-page-node-id="uBuJ5pkeYZ9EP4VZ47iJZA">m/44'/195'/0'/0/0</td><td data-page-node-id="RKNOF2H3kKOh1lGxc49m4f">T…（Base58Check，= ETH 地址加 0x41 前缀）</td></tr>
+    <tr data-page-node-id="1tt5394sv5dqBMdc76scle"><td data-page-node-id="Nvyr5pnOH6aFxQIeWPhTBD">SOL</td><td data-page-node-id="xyJa81PLvuy4qWTnfFSlhw">ed25519</td><td data-page-node-id="K8aXnct3saAXqly7SFvNnX">m/44'/501'/0'/0'</td><td data-page-node-id="rMATT6LIXyB7xcL4mFVWhd">Base58 公钥即地址</td></tr>
+    <tr data-page-node-id="WLKkCy8YkXNGipfkYBbroa"><td data-page-node-id="Y8fRfJbaGyqgsQdppNYXqh">SUI</td><td data-page-node-id="iE0h4cQ6WIbAdp89M26eGM">ed25519 / secp256k1 / secp256r1</td><td data-page-node-id="2fKhNBJXuTCP7aQTiCpgaH">m/44'/784'/0'/0'/0'</td><td data-page-node-id="n723hfi3aXxGFFIaUfheGc">0x…（Bech32, blake2b 派生）</td></tr>
+  </table>
+
+  <h3 data-page-node-id="H8wicsrYAK4eMcoA3icjsL">2.3 三种状态模型：理解各链差异的钥匙</h3>
+  <div class="grid c3" data-page-node-id="dKz14V3aNAkZHUjntNQSBx">
+    <div class="card" data-page-node-id="X8sjDUoLWn8JGD9sfU9Gpr"><h4 data-page-node-id="vXjCPUcCQfvPrczjDtiwII">UTXO 模型（BTC）</h4><p data-page-node-id="QzWScC012IuhStPW0WhG9C">余额 = 未花费交易输出集合。转账 = 消费若干 UTXO 作为输入 + 生成新 UTXO（含找零）。并行安全、隐私好，但无原生智能合约。</p></div>
+    <div class="card" data-page-node-id="3JeZBzx8qbzmrAlTUoGvyr"><h4 data-page-node-id="xjnuQoNYV1cpCpfro2CJxc">账户模型（ETH / TRON / SOL）</h4><p data-page-node-id="y1uCvrqBcYEZrd0N6KkCET">全局状态存储每个账户的余额与数据，转账直接改余额。智能合约也是账户。直观易编程，但状态膨胀、并发需 nonce/序号防重放。</p></div>
+    <div class="card" data-page-node-id="u16BAzuHYADK7kg2CyG42W"><h4 data-page-node-id="ByRvcnCauvwXljRfHuGUwE">对象模型（SUI）</h4><p data-page-node-id="JQAoxbHhfnw6zJAEg4cmeW">资产是一等公民「对象」，每个对象有唯一 ID 与属主。独占对象交易可并行执行（Mysticeti 共识 &lt;400ms 终局），共享对象才走全序共识。</p></div>
+  </div>
+
+  <h3 data-page-node-id="RyBlKkbqPe94cRbfpD2LCo">2.4 本阶段经典教程</h3>
+  <table data-page-node-id="4BvOsGPQ8iLiewY2a28iWD">
+    <tr data-page-node-id="nSS8bFtotxHcZpx5Lf3614"><th data-page-node-id="06C5l8DwSD2HvsgelQLHeb">资源</th><th data-page-node-id="HTU2tXdrV1I6FHAUkNAOGd">类型</th><th data-page-node-id="6enu9VgHKgZnJ1tGTV6Ypq">说明</th></tr>
+    <tr data-page-node-id="PZE2YnGpd1ly3VmU33SO6E"><td data-page-node-id="fW5DBNjodV7aKvzaafcVR2"><a href="https://learnmeabitcoin.com/" target="_blank" data-page-node-id="F0ZEyLg8fnSIqV5tpbR2tq">Learn Me A Bitcoin</a><span class="badge free" data-page-node-id="LDVGmt4is83uFZNY6j9dH5">免费</span></td><td data-page-node-id="7lmhEkQteB8mXneeXiYamk">互动教程</td><td data-page-node-id="AoECNEAE1wF6ufQDyKTjl2">公认最好的区块链原理可视化教程：交易、脚本、UTXO 全部有动画演示，Beginner → Advanced 完整路径</td></tr>
+    <tr data-page-node-id="o5YB7LoPabSyPoaoKqOZDh"><td data-page-node-id="rtc8kJSQFvTfYoCDdDX3qj"><a href="https://github.com/bitcoinbook/bitcoinbook" target="_blank" data-page-node-id="nZdQw1puRcfirM6D0YbROv">《Mastering Bitcoin》(开源第2版)</a><span class="badge free" data-page-node-id="vCpQjUTIPyDIJMkuunecZ0">免费</span><span class="badge book" data-page-node-id="Js24OrCzm0F4ITIl1vBjmd">书籍</span></td><td data-page-node-id="Dqx7XrMJPUV3vk21vBnuar">书</td><td data-page-node-id="6ooDx8GGeywljcqAK9HSmC">Antonopoulos 著，第 3–5 章（密钥/地址/钱包）是钱包开发必读；第 6–7 章讲交易与脚本</td></tr>
+    <tr data-page-node-id="n1c4KRfwU6MuRcB1SXoUEB"><td data-page-node-id="4UnUE2JROiCb1VjBGJOyLv"><a href="https://github.com/ethereumbook/ethereumbook" target="_blank" data-page-node-id="09DA8rPfBifGQ4p9C3Gn1k">《Mastering Ethereum》(开源)</a><span class="badge free" data-page-node-id="Cgfnfn8Vg5RnSHWWVfsjGM">免费</span><span class="badge book" data-page-node-id="OwIv3tMOA1VL3rHBJEQKCV">书籍</span></td><td data-page-node-id="FVUpUAISyBqnI1je93ZbiJ">书</td><td data-page-node-id="f0Dh5lVpRCLJBWJ05RVBEZ">第 4–5 章密钥与账户，与 BTC 对照阅读一次搞懂两种模型</td></tr>
+    <tr data-page-node-id="OgRIJ4VprJpCCnsG1giy81"><td data-page-node-id="6xVoExMLaaU7epTPqqZVI3"><a href="https://github.com/iancoleman/bip39" target="_blank" data-page-node-id="iRtfsPCCXStQDxacr6Am60">Ian Coleman BIP39 工具</a><span class="badge free" data-page-node-id="MwNH3BrCqmWxaLsUKbLgfZ">免费</span></td><td data-page-node-id="Xfi9JDUmhRGzUYBmpHpPRx">在线工具</td><td data-page-node-id="SoKfCzHQO5gS3CYonqr6L8">输入助记词可视化派生全链地址，P1 阶段最佳实验台（⚠️ 只用离线版操作真实资产）</td></tr>
+    <tr data-page-node-id="n1oTuGy2v2YfPNQgyViisx"><td data-page-node-id="GHNR2ua4YhfKV5bap6Vbdh"><a href="https://www.btcschool.net/" target="_blank" data-page-node-id="U6dMUTx4fmQ5WxTg3uQSwB">BTCSCHOOL 比特币开放课堂</a><span class="badge cn" data-page-node-id="BqbZTm5yFCclSzH8wY7E7X">中文</span><span class="badge free" data-page-node-id="JZ3rtdITfYNCfnLTCGdpuW">免费</span></td><td data-page-node-id="WcSZpSIwVADg0R8xwJJJqB">中文教程</td><td data-page-node-id="c1zpCmiTDOo955QtaaB8IM">中文社区较系统的比特币原理与开发教程，适合中文读者辅助阅读</td></tr>
+  </table>
+
+  <div class="tip" data-page-node-id="vcEZI8oX2qYsD1HZHroS4g"><b data-page-node-id="Mh2WyWDY2XRzEfgOERW1Yj">动手实验：</b>用 <code data-page-node-id="O9sqxkuV23ipwvHive7UJX">bip39</code> + <code data-page-node-id="Avg2rrEhBQPfk5xXPXx1U5">bitcoinjs-lib</code> + <code data-page-node-id="aTbrWqPXzrvjdwk8hrBBCJ">ethers</code> 写 30 行 Node.js：同一助记词派生 BTC / ETH / TRON / SOL 首个地址，与 Ian Coleman 工具结果比对。通过即代表 P1 毕业。</div>
+</section>
+
+<!-- ================= BTC ================= -->
+<section id="btc" data-page-node-id="7fQ4h6bQZCJ6FD0Jk2Gqgb">
+  <h2 class="sec" data-page-node-id="r3gkqwllb6hWDG9EvBIRyP">③ Bitcoin (BTC) <span class="tag" style="background:var(--btc)" data-page-node-id="2XECXuN4L769V4mQjRm8jO">UTXO · 脚本 · 数字黄金</span></h2>
+
+  <h3 data-page-node-id="GODabqtvxCbhc8dHRNTeD0">3.1 基础概念</h3>
+  <ul data-page-node-id="oUTvyzqxnyw9tjET6YhXDi">
+    <li data-page-node-id="kJ6lCIHFexkJDth97myhTD"><b data-page-node-id="BDoJIKTPMBVXjbMWL49oXu">共识</b>：PoW（工作量证明），10 分钟出块，2100 万枚上限，减半每 4 年。</li>
+    <li data-page-node-id="y8GqK5qdcnBN8c4afK2r0L"><b data-page-node-id="IWGoUQplfiTTOj0dvA6Ew3">UTXO</b>：见 2.3。钱包「余额」= 扫描链上属于你地址的所有未花费输出之和。</li>
+    <li data-page-node-id="GL0SsAyBGkIX2S7bTFLxYV"><b data-page-node-id="DCJkLsF4bLmgz5ISlAA2Ee">脚本（Script）</b>：类 Forth 的逆波兰栈语言。P2PKH（传统）、P2SH、<b data-page-node-id="6chtIx8pCnxD57H76vnpqg">P2WPKH（隔离见证 Bech32，主流）</b>、Taproot (P2TR, Schnorr 签名)。</li>
+    <li data-page-node-id="sBxfogOpnXz9QS3BMHdsQy"><b data-page-node-id="cL5ALit6eqb1oGjzHhgumJ">手续费</b>：按交易体积（vByte）计费，非按金额；矿工按 sat/vB 竞价。</li>
+    <li data-page-node-id="9ppdkR220XnBXogeihJ6or"><b data-page-node-id="TqvL4lCNYBR2gmIONwpwfF">PSBT (BIP174)</b>：部分签名比特币交易——多签钱包、冷热分离签名的事实标准，钱包开发必学。</li>
+  </ul>
+
+  <h3 data-page-node-id="oW4HGT2x1RvS7gBbbejVGA">3.2 钱包开发</h3>
+  <p data-page-node-id="NELy5UHQylue3DqfFJpI6j">主力库：<b data-page-node-id="QId15LGbtHJ1JkP8LR5nkq">bitcoinjs-lib</b>（JS，配合 bip39 / bip32 / tiny-secp256k1）、<b data-page-node-id="Y7QlhH03fvGGnvKv45MsF4">python-bitcoinlib</b> / <b data-page-node-id="uGP5vpXyvVOrtRliCRumCS">bit</b>（Python）、<b data-page-node-id="lHpoBpAFwxeOPb7QrsHElD">rust-bitcoin</b>（Rust）。测试网用 <b data-page-node-id="xKZOTcYY8GvmFezPR2A915">testnet3/4</b>，区块浏览器 mempool.space（支持测试网），水龙头 coinfaucet.eu。</p>
+  <pre data-page-node-id="mnMbQ0lWJ9Smr111RJZD3U"><code data-page-node-id="1LLHkrg6u3lDRjZX8Pd1Ko"><span class="cmt" data-page-node-id="01m1KQYECAoustW6Jt8BPU">// npm i bitcoinjs-lib bip39 @scure/bip32 @scure/btc-signer</span>
+import * as bip39 from 'bip39';
+import { HDKey } from '@scure/bip32';
+import { bitcoin } from '@scure/btc-signer';
+
+<span class="cmt" data-page-node-id="oIsuLrCiTwAj8GOfFe8h0K">// 1. 助记词 → 种子 → 主密钥</span>
+const mnemonic = bip39.generateMnemonic(128);          <span class="cmt" data-page-node-id="X0q7AQA3KK8MRpzX5VhfmI">// 12 词</span>
+const seed = await bip39.mnemonicToSeed(mnemonic);
+const hd = HDKey.fromMasterSeed(seed);
+
+<span class="cmt" data-page-node-id="AMcn9E9F76ufi76HqoAI4F">// 2. 原生隔离见证路径派生首个地址</span>
+const path = "m/84'/0'/0'/0/0";
+const child = hd.derive(path);
+const address = bitcoin.getAddress(child.publicKey);   <span class="cmt" data-page-node-id="KmKaxsFDn4hMGMBLFCgIct">// bc1q...</span>
+
+<span class="cmt" data-page-node-id="t6qwdYfxjbCljFKLZLkT1w">// 3. 构建转账（伪代码：UTXO 需从 Esplora/mempool API 拉取）</span>
+<span class="cmt" data-page-node-id="xnJTBfpU66ZGtOdUd1cL5P">// psbt.addInput(utxo) → psbt.addOutput(收款, 金额) </span>
+<span class="cmt" data-page-node-id="pfbZTiFBF0w7jzdYSH04Wp">//   → psbt.addOutput(找零) → sign → finalize → broadcast</span></code></pre>
+
+  <h3 data-page-node-id="H4anP4WBy6w9p3Io78TBrX">3.3 智能合约（Script / Layer2）</h3>
+  <p data-page-node-id="cjB2MaihExJQixztGTdZYj">比特币没有图灵完备合约，但需了解：<b data-page-node-id="F0kUcBtHDaE65eHsyblZEB">时间锁</b>（CSV/CLTV，闪电网络基础）、<b data-page-node-id="07qT90boPP1dTUqDEEpLwq">多签</b>（2-of-3 描述符钱包）、<b data-page-node-id="t06SXDhLIeQ6wJU2HzPeAx">Taproot 脚本树</b>；生态扩展：闪电网络（支付通道）、RGB / Ordinals / Runes（资产层）。钱包开发重点掌握 <b data-page-node-id="y1lKR84BnubhoGDswQg2kL">描述符（Descriptors）</b> 与 PSBT。</p>
+
+  <h3 data-page-node-id="VeH7RP7LvUvhShiYtTpQI0">3.4 DeFi / 应用生态</h3>
+  <p data-page-node-id="2jAAX5bvpxIU1jSjMPEiwZ"> BTCfi 尚早期：闪电网络支付、Stacks（BTC L2 的 Clarity 合约）、Babylon（质押）、Runes/Ordinals 资产。建议了解原理即可，重点投入放在 ETH。</p>
+
+  <h3 data-page-node-id="kqP8Bn6flJaLuCWRXJCxuN">3.5 经典教程清单</h3>
+  <table data-page-node-id="GQ45onlAcR9Z1TacHjNirl">
+    <tr data-page-node-id="NoceNHmapX7cdA0VtpmkHQ"><th data-page-node-id="TtTbgcPCU1WpIgRECS13jo">资源</th><th data-page-node-id="HTSlt7bTys05HmA6HAZpf5">类型</th><th data-page-node-id="ekNlv2Piz44C2AxWLqUV0E">说明</th></tr>
+    <tr data-page-node-id="DQBtO30Pj2ZhVOGUEMF6hP"><td data-page-node-id="NGXYAqGJ2JVF6FjYpEGpbD"><a href="https://github.com/bitcoinbook/bitcoinbook" target="_blank" data-page-node-id="wqIjbsFtw6yN6uAd3sGd6v">Mastering Bitcoin</a><span class="badge free" data-page-node-id="YjI9nhFutctD2DtRSQWM1g">免费</span></td><td data-page-node-id="8Ql1Y4PhHd1kemvq7Pn3Mr">书</td><td data-page-node-id="KKhndH6nAVHufCqgbZeqJY">BTC 圣经，全书精读；配套代码 Python 版</td></tr>
+    <tr data-page-node-id="Jbf1KkFt0ZxAQLa1EFF9YY"><td data-page-node-id="75w5hf3EJTffo1htJXvfGq"><a href="https://learnmeabitcoin.com/" target="_blank" data-page-node-id="EawCWn5FATJ9egTHmhbBJu">Learn Me A Bitcoin</a><span class="badge free" data-page-node-id="emHNW9AiHnS6rnT9HjjMAf">免费</span></td><td data-page-node-id="ctoFn7OQDNLbiBa64nBqMF">互动教程</td><td data-page-node-id="hvCBwill0Q5CIaQOYzxV1G">脚本、隔离见证、Taproot 可视化；有配套 GitHub JS 实现</td></tr>
+    <tr data-page-node-id="xjb6GdpfOeZAoJzxTJGSZ5"><td data-page-node-id="A62l8MOD223gwhHUqRdEy6"><a href="https://programmingbitcoin.com/" target="_blank" data-page-node-id="8Y5KzGZC2z1ZT34ppNNzt9">Programming Bitcoin (Jimmy Song)</a></td><td data-page-node-id="27OUW83u53CMJZiWPYdAXG">书</td><td data-page-node-id="KFOwy02G6UoU40zLzGWbRL">用 Python 从零实现椭圆曲线、脚本引擎、区块验证——深入底层首选</td></tr>
+    <tr data-page-node-id="IdXkIkdlVgfEg8scPMOwmm"><td data-page-node-id="112MkKgPsfkXIXBG90vbBg"><a href="https://bitcoin.studio/" target="_blank" data-page-node-id="h68EGNFdUoo7gOXH6OludC">Bitcoin from Scratch Workshop</a><span class="badge free" data-page-node-id="smktc1a7HTOS6hJYoiHJEH">免费</span></td><td data-page-node-id="E2MGUwuxUSeMJakt7Of35o">Workshop</td><td data-page-node-id="TLeiddcCQF0dNkV02Ok2KX">讲义 + 习题，从密码学写到交易构造</td></tr>
+    <tr data-page-node-id="9ZESDRf01sQdhuH1a55zHb"><td data-page-node-id="3YEDGXGAtpMXVmGCQbHpz4"><a href="https://github.com/BitcoinDevShop" target="_blank" data-page-node-id="pbYG3BEx2TiR64iHbjZW5e">bitcoinjs-lib 文档与示例</a><span class="badge free" data-page-node-id="J5uyhAlRRu4Q3FBnq3EB0y">免费</span></td><td data-page-node-id="BSEzZXIhIC8C5IF0BIbJyr">官方文档</td><td data-page-node-id="WpU2l8Ft9AVZRZxjIyEvoI">PSBT、Taproot 用例齐全；测试网实操标配</td></tr>
+    <tr data-page-node-id="ACuN1McSHo0QLPtn20FxAB"><td data-page-node-id="qkkReAGufhNv30HomDY21K"><a href="https://mempool.space/docs" target="_blank" data-page-node-id="BVa5EuO6XqkFJgF4MjF31l">mempool.space / Esplora API</a><span class="badge free" data-page-node-id="5ctnii8P6CZrOQ7UvxX6kt">免费</span></td><td data-page-node-id="uvNkkjaORnKUATF7jIEWNe">API</td><td data-page-node-id="Ncy3i1FiBnKx3PzD4g7YSo">查 UTXO、费率、广播交易——钱包后端常用</td></tr>
+  </table>
+</section>
+
+<!-- ================= ETH ================= -->
+<section id="eth" data-page-node-id="NAzTZgHP5WelmraWOjfbWE">
+  <h2 class="sec" data-page-node-id="45S7cqm6oNaXv5uVN1iH05">④ Ethereum (ETH) <span class="tag" style="background:var(--eth)" data-page-node-id="bmuDnHtHYGEdeUtBkzSOz2">EVM · Solidity · DeFi 主战场</span></h2>
+
+  <h3 data-page-node-id="thK9plIuhelYYqBNiP2AVG">4.1 基础概念</h3>
+  <ul data-page-node-id="271EJGhbEHlBStGTrtpnbV">
+    <li data-page-node-id="jubvkxXz7MEccqTeXIN83c"><b data-page-node-id="ALcLabi7k2nkAt6Nk8jUKb">账户</b>：EOA（外部账户，私钥控制）vs 合约账户（代码控制）。地址 = 公钥 Keccak-256 取后 20 字节。</li>
+    <li data-page-node-id="UOh5XPLMK8e6YTl6gFRltr"><b data-page-node-id="lBC7UCosgFlqGopeyRlEVE">Gas</b>：每步 EVM 操作码消耗 Gas；EIP-1559 后费用 = base fee（销毁）+ priority fee（小费）。钱包需实现费率估算与 Gas 上限。</li>
+    <li data-page-node-id="KiqtjuT3OrroWK9GYAXmOZ"><b data-page-node-id="5Rd7ZYGpO9vxL0xp2TFYpY">交易防重放</b>：nonce（每账户递增）+ 链 ID（EIP-155）。</li>
+    <li data-page-node-id="y8rUeptg460ktlu6tMJQus"><b data-page-node-id="e9xRXn6mRVhiyJQtoPVL9H">ERC 标准</b>：ERC-20（同质化代币）、ERC-721/1155（NFT）、ERC-4337（账户抽象）、EIP-712（结构化签名）。</li>
+    <li data-page-node-id="OKxftDPd09ownxHMpsbn5x"><b data-page-node-id="mjDl2KZtBkNAxShOBx1KL2">签名</b>：ECDSA (r,s,v)，v 用于恢复公钥（ecrecover）。</li>
+  </ul>
+
+  <h3 data-page-node-id="2XeHRRRMO5jZsJ92oxBTYx">4.2 钱包开发</h3>
+  <p data-page-node-id="E5D5jx442y6nTynZA1Y4DH">工具链：<b data-page-node-id="o5QlPYR6ggMqSQE7aK759j">ethers.js v6 / viem</b>（前端 + Node）、<b data-page-node-id="9jbeNXFVJbBh1xHu0ZYRjG">wagmi</b> + RainbowKit/ConnectKit（钱包连接）、Foundry/Hardhat（合约）、Remix（浏览器 IDE，零配置入门）。L2 生态（Arbitrum/Base/Optimism）EVM 等价，同一套代码多链复用。</p>
+  <pre data-page-node-id="V3fdjw3opmEmBQKTVBvz5m"><code data-page-node-id="DITldhOnuv8Y4Pku83mujU"><span class="cmt" data-page-node-id="sFEZqMs9AjMUMEOB6j3CmD">// npm i ethers
+// —— 一套助记词派生 ETH + 签名转账 ——</span>
+import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
+
+const mnemonic = Mnemonic.fromPhrase('your twelve words ...');
+const wallet = HDNodeWallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0/0");
+
+console.log(wallet.address);            <span class="cmt" data-page-node-id="dXWcy079Kd5MsDRW8CASaF">// 0x...</span>
+console.log(await wallet.signMessage('hello'));  <span class="cmt" data-page-node-id="yklh6zH8bJJlo1cfYAODll">// EIP-191 个人签名</span>
+
+<span class="cmt" data-page-node-id="tGCzzOnemuEJXBRuHjO52q">// 连接网络并发送转账（测试网 Sepolia，水龙头 faucets.chain.link）</span>
+const provider = new ethers.JsonRpcProvider('https://rpc.sepolia.org');
+const signer = wallet.connect(provider);
+const tx = await signer.sendTransaction({
+  to: '0xRecipient...',
+  value: ethers.parseEther('0.01'),
+});
+console.log(tx.hash);                   <span class="cmt" data-page-node-id="KyxjV7Ekhcrn8LsWP5ZZiZ">// etherscan.io/sepolia/tx/...</span></code></pre>
+
+  <h3 data-page-node-id="Ko0WTKEe3AgBa1cgwOlsQC">4.3 智能合约（Solidity）</h3>
+  <p data-page-node-id="HfOpRHYIr8rP5bHfGCgVFm">学习顺序：Solidity 语法（值类型/存储/修饰器/事件）→ OpenZeppelin 库（ERC-20/721、Ownable、AccessControl）→ Foundry 工作流（forge build / test / cast）。安全必学：重入（Checks-Effects-Interactions）、预言机操纵、闪电贷攻击。</p>
+  <pre data-page-node-id="1o1yjxcnm4mlQwykCeeKWb"><code data-page-node-id="qozlAn0zoDv7O3X8ddnP3j">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MyToken is ERC20 {
+    constructor() ERC20("MyToken", "MTK") {
+        _mint(msg.sender, 1_000_000 * 10 ** decimals());
+    }
+}</code></pre>
+
+  <h3 data-page-node-id="gZWriRp9HHWJjc30ssYpVr">4.4 DeFi（本路线的重点投入区）</h3>
+  <table data-page-node-id="OkHjzACmlv580Ne0c5XGZc">
+    <tr data-page-node-id="6hel83HXYNfMK2j7Az3HFN"><th data-page-node-id="6Lj2cVx5LxcPASKWWNLElh">赛道</th><th data-page-node-id="tELzFDax3GuA6FoufoPdi2">代表协议</th><th data-page-node-id="9xWd1bhpB9kkKzrIbI1DBK">学习要点</th></tr>
+    <tr data-page-node-id="cZKLzdobiqC49pRdApyUpE"><td data-page-node-id="7GHUnmBqWIrBcjTE3BsMW9">DEX / AMM</td><td data-page-node-id="KvIpzDnghYVnfbXp9POYdN">Uniswap V2/V3/V4、Curve</td><td data-page-node-id="PLWbZsLBg7YfwrcoONGQAW">x·y=k 恒定乘积、集中流动性、Hook；读 Uniswap 源码是最佳教材</td></tr>
+    <tr data-page-node-id="o0AWoM0BYONXQgaeEtLA6F"><td data-page-node-id="KrAv4uX2BgL5eUf5rc454q">借贷</td><td data-page-node-id="Oe9n5SM3geaF2XJGFitsCp">Aave、Compound</td><td data-page-node-id="mPQmrHFBoSrOMGrWJK0IxO">超额抵押、利率模型、清算机制；Compound V2 源码极简适合精读</td></tr>
+    <tr data-page-node-id="D5gFyZ1US4yDxlIW4HodZY"><td data-page-node-id="6JTrQETUfmr0CA06rrrziI">稳定币</td><td data-page-node-id="U2pTfzUU3TFUkc5i8o56TB">DAI（超额抵押）、USDC/USDT（法币背书）</td><td data-page-node-id="AZl5n9HCrzsH0G66kfR26h">三种稳定币设计范式与脱锚风险</td></tr>
+    <tr data-page-node-id="akW5msnQyyCgIWnNbsD9V3"><td data-page-node-id="7EDAJLFCkDId58DqQEyzdh">预言机</td><td data-page-node-id="l5VOUL9WdO1lGwOrxo7ZGm">Chainlink、Pyth</td><td data-page-node-id="SR3e95dqFSc6kNZLFyaBvZ">喂价机制、TWAP、操纵攻击案例</td></tr>
+    <tr data-page-node-id="hVzfrggK1Lw05O1XgmAFw2"><td data-page-node-id="hAowbTVGifJeTZ85CEtLdH">衍生品 / LST</td><td data-page-node-id="y9YyuLJmY8F7wffhofnOwo">dYdX、Lido</td><td data-page-node-id="vGeRqGulME4MfFL3brCtqq">永续合约、质押流动性凭证</td></tr>
+  </table>
+
+  <h3 data-page-node-id="i2KGpNh9ZV5xIjR9ipFkPH">4.5 经典教程清单（质量排序）</h3>
+  <table data-page-node-id="Ch4AJJUcem0wJG9Uc1OZAL">
+    <tr data-page-node-id="sy5oLByA0KBuzSxwicqeX6"><th data-page-node-id="EGLe2G3MJkbPnB0NUAmOD6">资源</th><th data-page-node-id="LfnTKKhfVQA6Jc41jiUtDV">类型</th><th data-page-node-id="7GM4tKPDWsmxBiprpbADXM">说明</th></tr>
+    <tr data-page-node-id="9OLNcIoCvPlcv4MJtyg48l"><td data-page-node-id="2ofTYe9rnZuBXWIPBq1lvW"><a href="https://github.com/ethereumbook/ethereumbook" target="_blank" data-page-node-id="Iy4WHnws9OKf8lwzfutHhj">Mastering Ethereum</a><span class="badge free" data-page-node-id="eIfVotacCmMWzYa45nSOca">免费</span></td><td data-page-node-id="DGhngrLCbtZZulG8M1kjLv">书</td><td data-page-node-id="9NStNsuyxLXBEzAV35UsuC">原理打底，EVM/交易/Gas 章节必读</td></tr>
+    <tr data-page-node-id="b10RbMgpeMU3T2BnOny7K9"><td data-page-node-id="Ig0Q8A1295YPU5dxkIYBVd"><a href="https://cryptozombies.io/" target="_blank" data-page-node-id="0cHpFldrWGqtChDQnzf9aX">CryptoZombies</a><span class="badge free" data-page-node-id="XZoEjdsoSyj25I4yB6ybAX">免费</span></td><td data-page-node-id="UhLUDjFgy1G83NIeMmojKZ">互动课程</td><td data-page-node-id="l8qjJ7r0MGUUWF31QYjq5i">游戏化学 Solidity，全球最著名入门教程</td></tr>
+    <tr data-page-node-id="KgUCkSceldn1YZoxmS0bfU"><td data-page-node-id="wyGA1DyvJDGk1PBa4A1EwT"><a href="https://updraft.cyfrin.io/" target="_blank" data-page-node-id="cjvntOLKZmjImRi5pLOVYQ">Cyfrin Updraft（Patrick Collins）</a><span class="badge free" data-page-node-id="gGgDPL9PumZJgeDRxVN8l0">免费</span></td><td data-page-node-id="sgBMRkAgxXb3z3aI39OOYx">视频课程</td><td data-page-node-id="K3eVxvjipQvHo1HBZVY20m">Foundry 全家桶 + 安全 + DeFi，目前体系最完整的免费英文课程链</td></tr>
+    <tr data-page-node-id="OEFOjGHvpncyZZ4RL66G8O"><td data-page-node-id="cQUxNkNpVxfGoaWs7HfR0J"><a href="https://docs.soliditylang.org/" target="_blank" data-page-node-id="cFmgo7VFb2H7AsX6HxdWbq">Solidity 官方文档</a>（<a href="https://docs.soliditylang.org/zh/" target="_blank" data-page-node-id="DYj0Xq92aOH9U6vSTr9ZWb">中文</a>）<span class="badge free" data-page-node-id="fQuTXRFUEY1V1yqcXqNPho">免费</span></td><td data-page-node-id="jwdCpmAKCtTffKIEHF4T30">文档</td><td data-page-node-id="BvGw9lO0lxZJCF9TWlE09w">语言权威参考，中文版同步更新</td></tr>
+    <tr data-page-node-id="1MpO2kFbBAjIRPdDQ0lAeY"><td data-page-node-id="OC6JgzjaxhHSqE1w6JsiCA"><a href="https://solidity-by-example.org/" target="_blank" data-page-node-id="UpyY6UvvA8cnyavgldGbJX">Solidity by Example</a><span class="badge free" data-page-node-id="3CUMTkzpbO29WvQtAb93G7">免费</span></td><td data-page-node-id="sHiwdx4ysblucvxi2mSCZa">示例库</td><td data-page-node-id="zwof3WrBvwEBdvi2awOCSq">按概念速查的最小示例，写合约时的字典</td></tr>
+    <tr data-page-node-id="KTyGpULj8iuGj5pPO72DMR"><td data-page-node-id="oYlOe8UzfhfyozFsDkH9wS"><a href="https://ethernaut.openzeppelin.com/" target="_blank" data-page-node-id="p1KKmiifceV4m6K8PfnH1D">Ethernaut</a><span class="badge free" data-page-node-id="jwvpzPUjGq9UVHd52KzBPT">免费</span></td><td data-page-node-id="VjwTKunr6nxDKErWpTVchM">安全闯关</td><td data-page-node-id="LxGUZ2kAGGaHTEcAxxJyHr">OpenZeppelin 出品，闯关学合约攻防，安全方向第一站</td></tr>
+    <tr data-page-node-id="jYApuuEG0wLHbikdGErk1r"><td data-page-node-id="9tWhAtW0nrxvgAVvoXxAu2"><a href="https://www.uniswapv3book.com/" target="_blank" data-page-node-id="fhdaIJDS1nsUCNGxVzdox2">Uniswap V3 Book (RareSkills)</a><span class="badge free" data-page-node-id="XSyBSqiF6EFWtM9ojmqCul">免费</span></td><td data-page-node-id="KVqAxDEMIOZapvn2Hu6KUo">书</td><td data-page-node-id="KnMmTEHsR4Gh42Kk8BavMT">从零写一个 Uniswap V3 克隆，DeFi 精通标志性教程</td></tr>
+    <tr data-page-node-id="sbJTzMvrn7DygClQohj5cs"><td data-page-node-id="IWBdIZ5EzrpQkKSG3ZsmxF"><a href="https://www.dappuniversity.com/" target="_blank" data-page-node-id="nR69y4EXkKrhEUvSYclO5c">Dapp University</a><span class="badge video" data-page-node-id="9CKyVNu4zprC7Xs4F3zak9">视频</span></td><td data-page-node-id="F2Gp0ZzBYJkxoD98qyNCF0">YouTube</td><td data-page-node-id="OU1bSrKKu1bqNlj2ewsYE7">英文圈最流行的 Web3 开发频道，项目驱动</td></tr>
+    <tr data-page-node-id="kwAs2Yo8ZYp8s1dNve2KTs"><td data-page-node-id="oBrDHTvRJ5zyoVXeNVZRlB"><a href="https://speedrunethereum.com/" target="_blank" data-page-node-id="iuqOTOPVDtVHXPr76rwYe7">SpeedRunEthereum (scaffold-eth)</a><span class="badge free" data-page-node-id="mcC2bTGpQb6ZscK8YOr9nb">免费</span></td><td data-page-node-id="HY2GPV1DUqNfmgrlpGpSkB">项目挑战</td><td data-page-node-id="BKIBPeTjPLycGFiRdE62y8">官方赞助的 dApp 闯关，全栈脚手架开箱即用</td></tr>
+  </table>
+</section>
+
+<!-- ================= SOL ================= -->
+<section id="sol" data-page-node-id="aXR4Ss6uq6R9aMTC0g7W9o">
+  <h2 class="sec" data-page-node-id="wiIipdHAjPMjIEQP7bEdfy">⑤ Solana (SOL) <span class="tag" style="background:var(--sol)" data-page-node-id="coUm5E6detdzL2Wgy8zL5x">高性能 · Rust · Anchor</span></h2>
+
+  <h3 data-page-node-id="58wHpjGxhCF6rJEUQChTzT">5.1 基础概念</h3>
+  <ul data-page-node-id="HA6PJwVBtNGPwmAqvPNV6m">
+    <li data-page-node-id="7rmjfqCUOSAwxLGtgoImD7"><b data-page-node-id="E1X5au7EYg2ASsJG45v3hW">共识</b>：PoH（历史证明，为交易全局排序提供时钟）+ PoS（Tower BFT），400ms 级出块，高吞吐低费用。</li>
+    <li data-page-node-id="LxIOz1ii3xXKxgrfFFWxnE"><b data-page-node-id="SesuN7rFor0E2Dz8oQnyns">一切皆账户（Account）</b>：程序（无状态、可升级）与数据账户分离；数据账户要付 <b data-page-node-id="XSvv6yjS3MJfdHqZFXwgAi">Rent</b>（押金，关闭可取回）。</li>
+    <li data-page-node-id="G9Jj99eRkhl9NGstMChvb4"><b data-page-node-id="ajypOaC5e3E9gp983KR36d">PDA（Program Derived Address）</b>：程序签名派生地址——程序控制的「账户」，Solana 版「合约存储 + 权限」核心概念，必须吃透。</li>
+    <li data-page-node-id="Jj2q85tOeAyRLhESWFUEgA"><b data-page-node-id="QJdwlxJ8XFXGGyTMmxey0k">交易</b>：由多条指令（Instruction）组成，原子执行；签名用 ed25519；地址 = Base58 公钥。</li>
+    <li data-page-node-id="SbbteZztKQi1HbQc9Th7zM"><b data-page-node-id="tRluqY9828VDBAEKqn30rG">SPL Token</b>：SOL 的代币标准（对应 ERC-20），代币账户体系（Mint / Token Account / ATA）。</li>
+  </ul>
+
+  <h3 data-page-node-id="nDXMiefYdpqudgeSzGbsyZ">5.2 钱包开发</h3>
+  <p data-page-node-id="6WgHrQZ519ejrtXnALYXtU">SDK：<b data-page-node-id="HKw0hfzPLDeMfy8meCjTqG">@solana/web3.js</b>（v1 稳定版生态最全；v2 重构为模块化 <code data-page-node-id="TTKNHbrRzgRZH1VXkND4CC">@solana/kit</code>）；前端连接用 <b data-page-node-id="axgjz6T7iXfegzyNHUsAgo">@solana/wallet-adapter</b>（Phantom/Solflare/Backpack）；浏览器零安装开发用 <b data-page-node-id="UnC98soCHg0J1Chgna2IDB">Solana Playground (solpg.io)</b>。</p>
+  <pre data-page-node-id="yivlKkkaq8m6Oz99APXXTb"><code data-page-node-id="4cBXyiCGc0JA9NLDc5xHKz"><span class="cmt" data-page-node-id="3zJT6DsdskvpeHkT0cHONA">// npm i @solana/web3.js @solana/spl-token
+// —— 助记词派生 + 查余额 + 转账 ——</span>
+import { Connection, Keypair, LAMPORTS_PER_SOL, sendAndConfirmTransaction,
+         SystemProgram, Transaction, PublicKey } from '@solana/web3.js';
+
+const connection = new Connection('https://api.devnet.solana.com');
+const from = Keypair.generate();              <span class="cmt" data-page-node-id="GLBFr4rZ6cA5ZNTDCXs1NP">// ed25519，浏览器钱包中通常不落盘私钥</span>
+await connection.requestAirdrop(from.publicKey, 2 * LAMPORTS_PER_SOL);
+
+const tx = new Transaction().add(
+  SystemProgram.transfer({
+    fromPubkey: from.publicKey,
+    toPubkey: new PublicKey('收款方Base58地址'),
+    lamports: 0.1 * LAMPORTS_PER_SOL,
+  })
+);
+await sendAndConfirmTransaction(connection, tx, [from]);  <span class="cmt" data-page-node-id="0ghXZpQaiezISoW2DhGBpQ">// devnet 确认秒级</span></code></pre>
+
+  <h3 data-page-node-id="B8BZB71gdXiLTU9oj0V7Uc">5.3 智能合约（Rust + Anchor）</h3>
+  <p data-page-node-id="xLxJbqtZt02uY2ek4bL8fd"><b data-page-node-id="zFxjYDbcH0yjGoG6CoLMwF">Anchor 框架</b>是事实标准：声明式账户校验、自动序列化、IDL 生成 TS 客户端。环境：Rust → Solana CLI → <code data-page-node-id="Z3bnWdqJoFJDEhNbaFAAAW">avm</code> 装 Anchor → <code data-page-node-id="IpSO1DR6q500BEKhSPq4IW">anchor init / build / test / deploy</code>，本地 <code data-page-node-id="MetS7jy4NCVlwqij3LYG1e">solana-test-validator</code>。</p>
+  <pre data-page-node-id="c5TWMXLezM8xOLBm04OyHc"><code data-page-node-id="r64g1CYqbiVeFvyE1vyanp">// programs/escrow/src/lib.rs —— Anchor 经典 Escrow 模式骨架
+#[program]
+pub mod escrow {
+    pub fn make(ctx: Context<Make data-page-node-id="b0iUtShFl6xbGdB5OIZjUQ">, amount: u64) -> Result<()> {
+        let escrow = &mut ctx.accounts.escrow;
+        escrow.maker = ctx.accounts.maker.key();
+        // CPI 转入 maker 的代币到 vault（PDA）...
+        Ok(())
+    }
+    pub fn take(ctx: Context<Take data-page-node-id="GqrYRY5J1Agm8PIdYtZur0">) -> Result<()> { /* 兑换并关单 */ Ok(()) }
+}
+
+#[account]
+pub struct Escrow { pub maker: Pubkey, pub mint_a: Pubkey, /* ... */ }</code></pre>
+
+  <h3 data-page-node-id="7n9NxBvt1wAGIUqyivcVWf">5.4 DeFi</h3>
+  <table data-page-node-id="XhJrN3EFidBnO7XOhC0UPh">
+    <tr data-page-node-id="4z0LDIYLPKdwzCdNaYQCsX"><th data-page-node-id="t0Vdb33ODqEKRY0xctarf2">赛道</th><th data-page-node-id="YpIsCiImWHYV2U1Y33ZxEe">代表协议</th><th data-page-node-id="lefe5DldWBW7BuY7QDtMhU">说明</th></tr>
+    <tr data-page-node-id="bErBVk1E22ienfEDNnuxx1"><td data-page-node-id="e1C4ZPreIGUMmxVwxAfDe3">聚合交易</td><td data-page-node-id="tlQ5fYGcszCOOGdE98Jk97">Jupiter</td><td data-page-node-id="nIbRHs1i6zAZ2DB5pq9zsD">SOL 链 DEX 聚合器入口，官方 API 文档完善，钱包集成 Swap 的首选</td></tr>
+    <tr data-page-node-id="zz6NesHQTNMfNKfecoD1s1"><td data-page-node-id="ZWlGAHVQ3WeE6ODGzNVDyb">AMM</td><td data-page-node-id="Lp9lhPpr7qjYKnuBdYCBFb">Raydium、Orca、Meteora</td><td data-page-node-id="2tJ2N2DWxVAGpCku6sS07y">集中流动性（CLMM）、DLMM 动态池</td></tr>
+    <tr data-page-node-id="DiNThv63XOK63YCQanWCrK"><td data-page-node-id="XAaCSYa3r4HzZ4d1m3XDuC">借贷</td><td data-page-node-id="3jnUOraytxdcKsMpnV00Lb">Kamino、Marginfi</td><td data-page-node-id="k6b1ikBTronAx9tHDNP4Lu">自动复借、金库策略</td></tr>
+    <tr data-page-node-id="UYXSjEJlcp5JXLNEUgVHSI"><td data-page-node-id="aW9vorAPDHks4qi3nZexxc">流动性质押</td><td data-page-node-id="zw0TwfaBU6NGEmlEpPcn1u">Jito、Marinade</td><td data-page-node-id="WJIa0oJ1e2kZkgfVoTCLjO">mSOL / JitoSOL，MEV 收益共享</td></tr>
+  </table>
+
+  <h3 data-page-node-id="CiUSzeZuzI0F9iHSZ9468v">5.5 经典教程清单</h3>
+  <table data-page-node-id="Os9NLLVsbAdNjxHRrISsNH">
+    <tr data-page-node-id="H806PMPMyNwWCEZ8UXufWt"><th data-page-node-id="p9rDu9U5gdzMsCBFIiX0gP">资源</th><th data-page-node-id="imuTmAl7cUXaZVXPJjSDSP">类型</th><th data-page-node-id="gySLeh9t2l45qxVQNzBXVz">说明</th></tr>
+    <tr data-page-node-id="RLKFPd6keVv1e9qRIAlfcL"><td data-page-node-id="RirRCn7NX2Xpd0JTb4LMSt"><a href="https://solana.com/docs" target="_blank" data-page-node-id="kJZEr3EnI4kUkmeV9QLQhQ">Solana 官方文档</a><span class="badge free" data-page-node-id="rGmIg8Bi9KFgSJwRq27zcV">免费</span></td><td data-page-node-id="GikAX0q5IO6BEHOzrxfG2L">文档</td><td data-page-node-id="aisxyyiflrVEp3szFgoSH5">概念（账户/PDAs/CPI/交易）+ 快速上手，起点</td></tr>
+    <tr data-page-node-id="fdw9j1sF9HPvcAXYDdWFlj"><td data-page-node-id="PPSxIfb1klk94SBIPUwHrw"><a href="https://solana.com/developers/courses" target="_blank" data-page-node-id="DRfd6GDQsjCH7TCd5VUdzz">Solana 官方开发课程</a><span class="badge free" data-page-node-id="AuOLARD7OM9AOigmwpRjur">免费</span></td><td data-page-node-id="5tYshWtJhyoGxUUP6v9fS3">课程</td><td data-page-node-id="9iFtDFjLCLPZTfH81lRF8C">Solana Foundation 出品：从 Rust/Anchor 到移动端，配套 buildspace 式练习</td></tr>
+    <tr data-page-node-id="XhVL82HGbFGCXA4BMKSryq"><td data-page-node-id="zNQ9fZGQyBJMhrYl43S3PO"><a href="https://solana.com/cookbook" target="_blank" data-page-node-id="XuJSzmy5t3Z4cpLcBqakV0">Solana Cookbook</a><span class="badge free" data-page-node-id="PBfFhoio1TA6kvIZoyyKro">免费</span></td><td data-page-node-id="0GJrfPsndFNZavIT0tKsli">食谱集</td><td data-page-node-id="kuFAdPgcqvJ3qukbp01jRk">查代码先来这：连接/转账/PDA/质押/Token 全示例</td></tr>
+    <tr data-page-node-id="eZCQdYuX1CxphZRrgsh8Ev"><td data-page-node-id="Pc1jDFze6kMpe2X1xHdWwm"><a href="https://www.anchor-lang.com/docs" target="_blank" data-page-node-id="Y1yiq3hLYB70SRJGeYPOJk">Anchor Book</a><span class="badge free" data-page-node-id="WmUUzCUCkXTOKNu9Un6Ozd">免费</span></td><td data-page-node-id="DSDmMfAPyciABf2ze2HD0o">文档</td><td data-page-node-id="gsqTqCgwQ1WA7bInP1UoqC">Anchor 框架权威教程（含 Tic-Tac-Toe 实战项目）</td></tr>
+    <tr data-page-node-id="weC9o8Klwb8Rw5qvyxvCXc"><td data-page-node-id="sDwiFDL3uQCFHDpepQRf6R"><a href="https://paulx.dev/" target="_blank" data-page-node-id="9nRRqz9ZKQXsiZC7ZV97en">Programming on Solana — Paulx Escrow 教程</a><span class="badge free" data-page-node-id="chFmkDdDLuv83SXIe7kCPR">免费</span></td><td data-page-node-id="m5nGrmwnqQ9PFx8zu1nGLn">博客</td><td data-page-node-id="1ObR0hXYZJj5RBzxFUqEr2">社区公认经典：手写 Escrow 吃透 PDA/CPI/账户校验</td></tr>
+    <tr data-page-node-id="NQqQBDeCeh2fO5r256auo7"><td data-page-node-id="b3GFe85piUE8zvLGvxtWvE"><a href="https://beta.solpg.io/" target="_blank" data-page-node-id="Bqv04klnWsHTyqElEGleXG">Solana Playground</a><span class="badge free" data-page-node-id="SL9k2qMFwxWanGUH57625V">免费</span></td><td data-page-node-id="jh7uqjmGVziWfOEMOKpkOn">在线 IDE</td><td data-page-node-id="mghYmvyGJ7voFsyZer91dR">浏览器写 Anchor + 一键 devnet 部署，零环境起步</td></tr>
+    <tr data-page-node-id="lZ9nxUi1ni5IQjktU4EKxa"><td data-page-node-id="mddSU43Z8K1UAEYqYPxpAQ"><a href="https://github.com/solana-developers" target="_blank" data-page-node-id="2VG9fWnCZKGUM5r9nTmOE0">solana-developers 组织</a><span class="badge free" data-page-node-id="MzZtuS6ZGc2mbgohGrhlKG">免费</span></td><td data-page-node-id="vUa6Q7TTZDn9eTNcorbC4f">脚手架</td><td data-page-node-id="vWJfk2J0J5HuZe7nDt32Oc">create-solana-dapp、dapp-scaffold、workshops</td></tr>
+    <tr data-page-node-id="LCAICfw8Qgud1NxWlwtt01"><td data-page-node-id="zyIkW6jU3NkodQ6JBpToNM"><a href="https://earn.superteam.fun/" target="_blank" data-page-node-id="b3DJgGVk1i5IfyujQHMcfz">Superteam Earn</a><span class="badge free" data-page-node-id="7xvWAovbo0Nr2sZK5DuoGn">免费</span></td><td data-page-node-id="QL6xqfJgRXrWkRQEoMG4MG">赏金挑战</td><td data-page-node-id="GCIRWXgHxZ07YWdsBmfYA9">拿真实赏金练手（接 RPC、写程序、做前端），进阶者必刷</td></tr>
+  </table>
+</section>
+
+<!-- ================= TRON ================= -->
+<section id="tron" data-page-node-id="FSyTeMqcaX5S5aACKvNCgj">
+  <h2 class="sec" data-page-node-id="QTRQpfGnbxyPlXFdXud5ZK">⑥ TRON <span class="tag" style="background:var(--tron)" data-page-node-id="kWyI3kmzNxStwxRH8ZRLyY">EVM 系 · USDT 最大流通链</span></h2>
+
+  <h3 data-page-node-id="H8EXQfPO1moSEUGuIg7JnV">6.1 基础概念</h3>
+  <ul data-page-node-id="GWN3LQ6mHCiIwYABCiDx3G">
+    <li data-page-node-id="Yc46lEwpB6VywkQr8pLOC8"><b data-page-node-id="Ckg8307tKvLnvZQFp6ZXCP">架构</b>：DPoS（27 个超级代表轮流出块），3 秒出块，TVM 兼容 EVM（Solidity 直接用，多数合约仅需重编译）。</li>
+    <li data-page-node-id="dKnepZ5CMgX9pXLPTbW2Es"><b data-page-node-id="njGYtHePb1YN0lT7JQaEQS">地址</b>：= 以太坊地址前加 <code data-page-node-id="h5oilNpybXnHVpvt3cAoj7">0x41</code> 再 Base58Check。同一 secp256k1 密钥在 ETH 与 TRON 是「同私钥不同地址表示」——支持 EVM 的多链钱包靠这一点统一派生。</li>
+    <li data-page-node-id="ic2NXCyBBvVQZk38v2LGoh"><b data-page-node-id="RYpW4aH9nhmbsmfAui0ErQ">资源模型（TRON 特色，必须掌握）</b>：带宽（Bandwidth，普通转账消耗）与能量（Energy，合约调用/部署消耗）。可以质押 TRX 获得资源，或燃烧 TRX 抵扣——做 USDT 交易钱包、量化工具的核心成本知识。</li>
+    <li data-page-node-id="9a7rJkRMGVYEGmdpxwX8FF"><b data-page-node-id="DLkZN3AHF3qaIPEP4z4iEN">TRC-20</b>：TRON 版 ERC-20。TRON 上流通着最多的 USDT（万亿级市值），是该链钱包/支付开发的第一需求场景。</li>
+  </ul>
+
+  <h3 data-page-node-id="KTLafZkvgOpGMCS2vFoU09">6.2 钱包开发</h3>
+  <p data-page-node-id="s1KZ4FJqkIGkeBlyP5DJOY">SDK：<b data-page-node-id="N1sIDdRjJFtxWDrGzM1GA8">TronWeb</b>（JS，对应 ethers）；部署工具 <b data-page-node-id="60CNYsf1ToFSiKuHrHWzlz">TronBox</b>（对应 Hardhat/Truffle）；浏览器钱包 <b data-page-node-id="heiZQVvj9F5J0HgtXv3jQn">TronLink</b>（注入 <code data-page-node-id="YYBKCKZADV5rYKpgl2Jop1">window.tron</code>）。测试网：<b data-page-node-id="BULRObT1kdJ0BTDtFdFrqB">Shasta</b> 与 <b data-page-node-id="DTx8UOt1uDciWj2AeG4Geq">Nile</b>（生态更活跃，水龙头 nileex.io），浏览器 tronscan.org。</p>
+  <pre data-page-node-id="6NkFVIyUbfuOKIDFJeg5ti"><code data-page-node-id="koZoTa3SMzBGJfHHS5sQCF"><span class="cmt" data-page-node-id="KiNM4Qx4nhefBaNw4WxLcg">// npm i tronweb
+// —— 助记词派生 TRON 地址 + TRC-20 USDT 转账 ——</span>
+import { TronWeb } from 'tronweb';
+
+const tronWeb = new TronWeb({ fullHost: 'https://nile.trongrid.io',
+                              privateKey: PRIVATE_KEY });
+console.log(tronWeb.defaultAddress.base58);   <span class="cmt" data-page-node-id="rPic5TUBdwEO27tAzNuELU">// T...  (m/44'/195'/0'/0/0)</span>
+
+const USDT = 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf'; <span class="cmt" data-page-node-id="MWmcwNLBxd0V2cNwpqz7pj">// Nile 测试网 USDT</span>
+const contract = await tronWeb.contract().at(USDT);
+
+await contract.transfer('T收款地址', 1_000_000) <span class="cmt" data-page-node-id="tsEQ4kVVsf9Kd0G09o02Jh">// 6 位小数 → 1 USDT</span>
+  .send({ feeLimit: 100_000_000 });            <span class="cmt" data-page-node-id="PMFafS6WfpcLeZ4Y0wBW3a">// 燃烧能量上限，防扣死</span>
+
+<span class="cmt" data-page-node-id="DQcvFRlBAKcGYVBPDWZ4vf">// 读余额用 .call()（免 Energy）：
+// const bal = await contract.balanceOf(addr).call();</span></code></pre>
+
+  <h3 data-page-node-id="dZWrpsf5BEEfCharElpS5f">6.3 智能合约</h3>
+  <p data-page-node-id="7BHxmoLDewTSKNyovj8qFa">Solidity 语法完全通用（版本略滞后于以太坊最新），差异集中在工具链与费用：TronBox 部署到 Nile：<code data-page-node-id="lWOqZN87h9q8OYtYZEZ18p">tronbox migrate --network nile</code>；合约验证在 Tronscan。官方「Build a Web3 App」教程（去中心化图书馆 DApp：Solidity + TronBox + TronLink + TronWeb 全流程）是最佳入门实战。</p>
+
+  <h3 data-page-node-id="nAgO7rooi7CoITlXG30Gyl">6.4 DeFi</h3>
+  <table data-page-node-id="lv9Ou0MPJrcL7YPUSSDcQP">
+    <tr data-page-node-id="pSdorqS92EpXr9ay4gIdPS"><th data-page-node-id="jvmj9Ymo1i3JXTQf15kGYQ">赛道</th><th data-page-node-id="gJInogoibrMYdQFFGKggSa">代表协议</th><th data-page-node-id="X3wHzXFKj2EeGabikB7jsB">说明</th></tr>
+    <tr data-page-node-id="TTWCndSQ6HD9VOYsDBg1Sc"><td data-page-node-id="qBNDSIR9ONJchFiQMRQnsT">借贷</td><td data-page-node-id="DF48gI6vzC3MpRUzkCxTka">JustLend DAO</td><td data-page-node-id="PDXlnL8Ls2rVj1MrxjHHqt">TRON 最大的借贷协议，USDT 借贷市场核心</td></tr>
+    <tr data-page-node-id="oxC7VP3yW6EZoTeBe0b7Ck"><td data-page-node-id="wZSAlCKwODE3IFEX1eDDD7">DEX</td><td data-page-node-id="FF202GUobTy5iMH6qb22Cs">SUN.io / JustSwap</td><td data-page-node-id="N6FUEzA1QyQJ6V9t9Pqg2w">AMM 老牌，稳定币兑换为主</td></tr>
+    <tr data-page-node-id="GmSBkZWwIYhPEYWP5Rtf4J"><td data-page-node-id="oodFRe21f8JoMidhjgNvFs">稳定币</td><td data-page-node-id="OVD08xteTxHKcLJKaEVIR0">USDT-TRC20</td><td data-page-node-id="Z3yvGfBha23tDGCqcASkRJ">链上转账费近乎 0、确认快，是亚洲支付/OTC 场景首选——也是 TRON 钱包开发最大的真实需求</td></tr>
+    <tr data-page-node-id="t3lMkrNCuDF9xHigHadqDr"><td data-page-node-id="HoJb99Td9IBNfNPdVslDSS">质押</td><td data-page-node-id="CEWbBcpNWIFocPp2EoHOEh">Tron Stake 2.0</td><td data-page-node-id="FhiMJnRwptmtVOvCQhjNUG">质押获得带宽/能量资源，了解资源租借市场</td></tr>
+  </table>
+
+  <h3 data-page-node-id="rc1eJliDQsF3En7H9uq4B0">6.5 经典教程清单</h3>
+  <table data-page-node-id="7Sg3ntXRbaz29u2NTcKexM">
+    <tr data-page-node-id="rAGQhNzpeMkhxwTbmEQB6K"><th data-page-node-id="2ibMSAqnzWWr0phzJbdHt6">资源</th><th data-page-node-id="ARQoHcZheqxueYLUnnNKAe">类型</th><th data-page-node-id="eMxTNNpGj6XLSKa4QSn58X">说明</th></tr>
+    <tr data-page-node-id="A1AamgIPc4Z4YHGJig9pS0"><td data-page-node-id="oILMYoX8VBYhrJyNYpe45p"><a href="https://cn.developers.tron.network/" target="_blank" data-page-node-id="EKt26xEVuAkcJGoZtvNCWY">TRON 开发者官方文档（中文）</a><span class="badge free" data-page-node-id="HFbHji3Ubu9QIMkYgXfLbJ">免费</span><span class="badge cn" data-page-node-id="t2mfCgDtbzuMrMeJgeHMae">中文</span></td><td data-page-node-id="QnFLsJAZWIGuLfGTYhfOAp">文档</td><td data-page-node-id="h7AdWTo7R0L4iY1RkiQOCV">官方中文文档：概念、TronWeb/TronBox、API、资源模型，一站式</td></tr>
+    <tr data-page-node-id="BD1IHVWyYwQCYBfzxCi5Xo"><td data-page-node-id="ZZ5RxFTMgWWrVDfdq5WGbb"><a href="https://cn.developers.tron.network/docs/build-a-web3-app" target="_blank" data-page-node-id="t554mtIYCsOQaUHCVbRM4D">官方实战：Build a Web3 App</a><span class="badge free" data-page-node-id="GYC2SZJBfuSsclSj1J87fN">免费</span><span class="badge cn" data-page-node-id="4qgVRawA1VsZGgSuHg09aP">中文</span></td><td data-page-node-id="w1RsI5dPLEAmyMf1m4EH79">实战教程</td><td data-page-node-id="HY4zpAb9weiTaKLePCcK47">从零构建去中心化图书馆 DApp：Solidity + TronBox 部署 + TronLink 授权 + TronWeb 交互</td></tr>
+    <tr data-page-node-id="d2xoIYC1aEBv7kcRdH9Dkf"><td data-page-node-id="djfBV4Geee6doojzBXoav3"><a href="https://developers.tron.network/docs/tron-box-intro" target="_blank" data-page-node-id="neEUDhREEl4gdcNWT6COnP">TronBox / TronWeb / TronGrid 文档</a><span class="badge free" data-page-node-id="f64z8MKxddXiicDnM99LNr">免费</span></td><td data-page-node-id="1lgt10ISGQoIAvr7iDn2V8">工具文档</td><td data-page-node-id="oEHC3niDGoKGv24sn7YFvP">三件套官方文档；TronGrid 是 TRON 的 Infura</td></tr>
+    <tr data-page-node-id="bFQsAOLFFt1pnD87qdWNKn"><td data-page-node-id="CcwEOJ0HR5aBnTVO0ZWTqw"><a href="https://nileex.io/join/getJoinPage" target="_blank" data-page-node-id="AP5WgHuvxfHVAlOp4yKlKq">Nile 测试网水龙头 &amp; 浏览器</a><span class="badge free" data-page-node-id="gzADF1XboIwtYksa1rHfGo">免费</span></td><td data-page-node-id="H62fEdjydBiqId57M7LY0w">基础设施</td><td data-page-node-id="89vs3KVb5TYAiLDxfY3cxf">领测试 TRX/USDT；nile.tronscan.org 查交易</td></tr>
+    <tr data-page-node-id="WTSf6PE1qnKJqWvsnc0qAl"><td data-page-node-id="TiaiVD9WGwW1R6ZfyB3yAW"><a href="https://developers.tron.network/docs/resource-model" target="_blank" data-page-node-id="mB46FSEZQRrjGSWNGLB4cL">资源模型文档</a><span class="badge free" data-page-node-id="z3dGVpOeFKOGcClStjjfOV">免费</span></td><td data-page-node-id="sQkcHkgq3RNK99GXOiqdMf">文档</td><td data-page-node-id="13oEvom0gkdq5JJGdq8ogT">Bandwidth / Energy / Stake 2.0 官方说明，成本核算必读</td></tr>
+  </table>
+  <div class="tip" data-page-node-id="sTDWmPWWhJYjPL00DArxGo"><b data-page-node-id="CbVs505VMYhPJ7gEK2bSgO">先学 ETH 再学 TRON</b>：Solidity、合约设计、Web3 思维全部复用，TRON 阶段只需补「资源模型 + TronWeb/TronBox + TRC-20 细节」，2–3 周足够。</div>
+</section>
+
+<!-- ================= SUI ================= -->
+<section id="sui" data-page-node-id="HNYQrIcFBCDblU6xz5nR5H">
+  <h2 class="sec" data-page-node-id="aNh2ODK8IO2H28CNbk5SWC">⑦ Sui <span class="tag" style="background:var(--sui)" data-page-node-id="ezpZHpWwUXsqO1tqNeCGUe">Move · 对象模型 · 并行执行</span></h2>
+
+  <h3 data-page-node-id="a6qLSxUklG9fK11BBhGAmG">7.1 基础概念</h3>
+  <ul data-page-node-id="Pxw3GNw4ST32jw3LoWzFM2">
+    <li data-page-node-id="caPJAccZM2TluHcJ8DJZdL"><b data-page-node-id="d18YodgU8fqFY2XSwhhL5I">对象模型</b>：一切资产都是对象（唯一 ID、属主、版本）。独占对象（Owned）交易可<b data-page-node-id="KHiubznigu83gURaIVHPaP">并行执行</b>无需全局共识，共享对象（Shared）才走拜占庭共识——这是 Sui 高吞吐的根源。</li>
+    <li data-page-node-id="sLRGyPFrEuVlQH8Wlt0PGr"><b data-page-node-id="BBlLhrV8jU3ITMXolkB5R2">Move 语言</b>：源自 Diem 的资源导向语言。线性类型系统让「资产只能被拥有一次、不能凭空复制或意外销毁」，静态防止重入与双花级别 bug。</li>
+    <li data-page-node-id="8sLyzaQ8RZ19bCSokkf2zF"><b data-page-node-id="lHbGR8cGLuBzYhOqBz6zGs">PTB（可编程交易块）</b>：一个交易块内编排最多 1024 个操作（Move 调用、转账、拆合币），原子执行——链上可组合性的独特形态。</li>
+    <li data-page-node-id="IQCKPEP0F3OOzVXxWqQcRv"><b data-page-node-id="HKCg8SuQ5YXF9KHuE5zOyG">Move 对象能力</b>：<code data-page-node-id="G4C4P6MM63K4mO0ATlhD8Y">has key / store / copy / drop</code> 能力标注决定对象行为；<code data-page-node-id="6tiCjKKmFBSJfBoYfBGlYo">TreasuryCap</code> 模式管理代币铸造权限。</li>
+    <li data-page-node-id="rmGdxj4pqbW669JwmddxGB"><b data-page-node-id="P7LN3h3YL1f9K3LOEP9ezs">zkLogin</b>：用 Web2 账号（Google/Apple）零助记词登录链上账户——Sui 钱包体验的差异化卖点，钱包开发必看。</li>
+    <li data-page-node-id="fRd7oZS1UYMuAKbtHFg1Ol"><b data-page-node-id="K1dG4sYiwlRIlTF0FJi4sV">共识</b>：Mysticeti DAG 共识，亚秒级终局。</li>
+  </ul>
+
+  <h3 data-page-node-id="sWKYleZlyr7Gy51ldkIlGx">7.2 钱包开发</h3>
+  <p data-page-node-id="mb76WeyjusjZBEVNl9TdAV">SDK：<b data-page-node-id="FQqYzZhDEQDmSANqTNDsp6">@mysten/sui</b>（TS SDK，含钱包 Client）、<b data-page-node-id="bUmGIoo3axjr9md9RbuH5C">@mysten/dapp-kit</b>（React 连接钱包组件：ConnectButton / useCurrentAccount / useSignAndExecuteTransaction）；官方钱包 <b data-page-node-id="iJW9LyhroB2FnuSweoiTuU">Slush</b>；测试网水龙头 docs.sui.io/guides/developer/getting-started/get-coins。</p>
+  <pre data-page-node-id="oRkUWIAWu4AqZxSOhZ6I0p"><code data-page-node-id="eL4Wc5eb6XoB6pdoreSfA6"><span class="cmt" data-page-node-id="ZNBDc0tZXwhMAfQ7gtoDaK">// pnpm add @mysten/dapp-kit @mysten/sui
+// —— dApp Kit：连接钱包并调用 Move 函数（React）——</span>
+import { ConnectButton, useCurrentAccount,
+         useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
+
+function CreateGreeting() {
+  const account = useCurrentAccount();
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${PACKAGE_ID}::greeting::new`,   <span class="cmt" data-page-node-id="5GkkxTU6yJuxdEAJv4uQai">// 调用链上 Move 函数</span>
+  });
+
+  return (&lt;&gt;
+    &lt;ConnectButton /&gt;                       <span class="cmt" data-page-node-id="XeCwYebZkATjqIXExIgszB">// 内置 Slush/Phantom 等钱包选择</span>
+    &lt;button onClick={() =&gt; signAndExecute({ transaction: tx })}&gt;创建&lt;/button&gt;
+  &lt;/&gt;);
+}</code></pre>
+
+  <h3 data-page-node-id="o7bxnQ99Vis8xT0nBJo3q5">7.3 智能合约（Sui Move）</h3>
+  <pre data-page-node-id="a4HDTU3wz9IO6mvZmZE6fI"><code data-page-node-id="zm2GJmgQOQf7XsLk1nLVl5">// sources/counter.move —— 最小 Move 包示例
+module counter::counter {
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::TxContext;
+
+    public struct Counter has key { id: UID, value: u64 }
+
+    public entry fun create(ctx: &mut TxContext) {
+        let c = Counter { id: object::new(ctx), value: 0 };
+        transfer::public_transfer(c, ctx.sender());  <span class="cmt" data-page-node-id="hHUummEAxnuDWNY7zrf2vg">// 转给调用者（独占对象）</span>
+    }
+    public entry fun increment(c: &mut Counter) { c.value = c.value + 1; }
+}
+// sui move new counter → sui move build → sui move test
+// sui client switch --env testnet → sui client publish</code></pre>
+
+  <h3 data-page-node-id="yKdS58fm5iiuy8APcpFhqI">7.4 DeFi</h3>
+  <table data-page-node-id="soV0nLaxiLVBVHBB17ehIs">
+    <tr data-page-node-id="pfaVLfGHNjCWTnFJlpGHrK"><th data-page-node-id="VOcVCijmFWvP2ivZZm0M7y">赛道</th><th data-page-node-id="XLCbwBzG1FbedNhE2M5rqb">代表协议</th><th data-page-node-id="2SETrOCT9CcxgpEBOV6Bxj">说明</th></tr>
+    <tr data-page-node-id="gEuTZ5p6yTQ7EXjvG4tgIa"><td data-page-node-id="2c02pl3YHGZZxZxXsbJ7nL">订单簿 DEX</td><td data-page-node-id="WokocdK9dI4cHnpTbrDzCk">DeepBook</td><td data-page-node-id="LuciOM65FRHR5Jk3badtDt">链上中央限价订单簿（官方原生），Move 实现，性能标杆</td></tr>
+    <tr data-page-node-id="lrxFBP9g2AZRMgou69lWdt"><td data-page-node-id="ySBNgzb19TzVdA55uNdKtB">AMM DEX</td><td data-page-node-id="9cDgSekoOLGEAKNM9jQbPX">Cetus、Bluefin</td><td data-page-node-id="ogSmHh5Y2PGhLwbbhplehO">Cetus 是 Sui 上的 Uniswap + 集中流动性</td></tr>
+    <tr data-page-node-id="6NMKyAEu87Cv7yvt06rUTt"><td data-page-node-id="3g0CK27E4OFEBpQiqjAdpw">借贷</td><td data-page-node-id="BYHfgcKRiBf5ptpqkTKYxY">Scallop、Suilend</td><td data-page-node-id="6hpdBiZ7dpyJsYFYLVEt9h">隔离市场借贷模型</td></tr>
+    <tr data-page-node-id="Rf373RWjbUogvi3Qo13Dgv"><td data-page-node-id="9UHqEOlDkcK4D0HDe6WYNy">流动性质押</td><td data-page-node-id="jmhPw9QuwER25eLpssDE9M">Haedal、Aftermath</td><td data-page-node-id="AFs9i1dHr9MThHPuC0tWLh">并行执行让 LSD 收益结算更快</td></tr>
+  </table>
+
+  <h3 data-page-node-id="GZXZpv2R4l3B3D2VC7UeoQ">7.5 经典教程清单</h3>
+  <table data-page-node-id="xT24eSRW6I8JItOnOlrj5j">
+    <tr data-page-node-id="B1QPpi4inImVgkSWNGfAmj"><th data-page-node-id="jEUzGde4nRbYGqzuSRaq41">资源</th><th data-page-node-id="dBIPFfHyOwCcvXpTIyxLm6">类型</th><th data-page-node-id="pjZ6rsyQD6rdoRAGtB9wXt">说明</th></tr>
+    <tr data-page-node-id="2cCnhSvJVuUyEZIhTxxarl"><td data-page-node-id="QHklRfWbug304VFDWVaISu"><a href="https://docs.sui.io/" target="_blank" data-page-node-id="QSxCpJQhgPHYIyOfWfiKpn">Sui 官方文档</a><span class="badge free" data-page-node-id="NDVDbj1zx4445uubB59FY7">免费</span></td><td data-page-node-id="snCdTl1jrDAyLCtNTbfABX">文档</td><td data-page-node-id="XkczS8zGsADfFw1Nd2X30x">Getting Started → Hello World → 前端连接 → 对象/PTB/zkLogin，官方路径完整</td></tr>
+    <tr data-page-node-id="4X8ukEo5vCMGSH9PpSMGj9"><td data-page-node-id="wIYYan3bnQXFUx5BX1TO3V"><a href="https://github.com/sui-foundation/sui-move-intro-course" target="_blank" data-page-node-id="Fx8HCEGphv8EuOJwQUzon1">Sui Move Intro Course</a><span class="badge free" data-page-node-id="hh1WrdyrlAD13m7VU5QOvY">免费</span></td><td data-page-node-id="UhzYnuEPTQDow98zEsxxMh">课程</td><td data-page-node-id="1GOhNQf3JFeTxTorfRmGzb">Sui 基金会官方 Move 入门课（社区经典），含大量练习</td></tr>
+    <tr data-page-node-id="lc4LHPciwNxiRse9xj3Eg9"><td data-page-node-id="TK6La7N3qPTt7c5epQql7s"><a href="https://move-book.com/" target="_blank" data-page-node-id="rx8QiPiK2SEC1a8rN5T8ZW">The Move Book (Sui Edition)</a><span class="badge free" data-page-node-id="EstCU7z0TLHgTi4rM2whT4">免费</span></td><td data-page-node-id="1nheFJPpQsbkr0AJhkAIqp">书</td><td data-page-node-id="SrD74On1EJ6YR3DNpE3hPe">Move 语言权威中文/英文在线书，语法系统学习</td></tr>
+    <tr data-page-node-id="oj5UEccix4MCcntPDjNxwI"><td data-page-node-id="vnOdDyoRECgJWKiNHnxmiB"><a href="https://examples.sui.io/" target="_blank" data-page-node-id="ASQjLZqCYmQCp0oHwDWkWY">Sui by Example</a><span class="badge free" data-page-node-id="rL6CAwW1IKHC5bAbk5x17s">免费</span></td><td data-page-node-id="Orq3rQnqGopshQE95rUvCP">示例库</td><td data-page-node-id="6AsLxZwMiBuwiEJiWJJD9L">官方按主题的 Move 代码示例集</td></tr>
+    <tr data-page-node-id="zfVLJmk2Qbuiu8DPVS9yWX"><td data-page-node-id="oLHA9AOn7T0jsa1mDlnk8V"><a href="https://docs.sui.io/guides/developer/getting-started/app-frontends" target="_blank" data-page-node-id="Dt4Lq2ibyiZx85gXQbB5GU">官方教程：连接 React 前端到 Move 包</a><span class="badge free" data-page-node-id="oXXppGf2YlVFlkogOx3O3C">免费</span></td><td data-page-node-id="ZsUuThMDqGQTYuIG9XxGdo">实战教程</td><td data-page-node-id="mfdTwKUCj1IZf7R3RpJL0Y">dApp Kit + Hello World 包，Sui 全栈 dApp 第一课</td></tr>
+    <tr data-page-node-id="8JbI9G96FBEVmtmK1DtT9e"><td data-page-node-id="ohD4S3y0zFEi2XrcYNRZX5"><a href="https://discord.gg/sui" target="_blank" data-page-node-id="JxWfW02M4KNvHqhpCkCl6P">Sui Discord #dev-support</a><span class="badge free" data-page-node-id="7zEanKXYcKrjoxies8WxEY">免费</span></td><td data-page-node-id="qEhVL9twCyhFPQ1HHYlfGW">社区</td><td data-page-node-id="45BZsbwHmyykem2scKq7Vl">Move 问题官方响应快，进阶答疑主阵地</td></tr>
+  </table>
+</section>
+
+<!-- ================= 精通 ================= -->
+<section id="mastery" data-page-node-id="Zw9IlUDVeZcleOQ0Af8PZk">
+  <h2 class="sec" data-page-node-id="O5c8j98fgO2cxmc1CsN3eb">⑧ 进阶与精通 <span class="tag" style="background:#1e293b" data-page-node-id="5RHGFmJ4DpELsyLOSpFoAr">MASTERY</span></h2>
+
+  <h3 data-page-node-id="yAmrB9ZFH1Ea5Dl2T0F4ni">8.1 钱包架构的三个层次</h3>
+  <div class="grid c3" data-page-node-id="W4vFtMrYp5XyYusdgwJJQa">
+    <div class="card" data-page-node-id="2tY0fXtNzbTCEBmRDjPzzV"><h4 data-page-node-id="ncAd5f4rYoGAxAxygB5i4W">① 普通钱包（P1–P6 已覆盖）</h4><p data-page-node-id="wUNHtQULNPuDXwr1qic8YN">助记词 + 私钥本地签名。学习重点：keystore 加密、助记词备份 UX、多账户管理。</p></div>
+    <div class="card" data-page-node-id="vVScyVktw2jfyZIrDnC4Yk"><h4 data-page-node-id="5mLlkAZsaUfyef2XTDl4BU">② MPC / 门限钱包</h4><p data-page-node-id="qf4cHK4WD6cv0o1AFL7cGq">私钥分片（2/2、2/3），签名在多方协作下完成，无单点私钥。读 Fireblocks / Zengo 的公开方案，理解 TSS 与 GG20/DKLS。</p></div>
+    <div class="card" data-page-node-id="49COvsQq2b7X7xfvzM3Y71"><h4 data-page-node-id="h47IhqZp9hgeLrmlfXcByn">③ 账户抽象（AA / ERC-4337）</h4><p data-page-node-id="j27T8h2GDQmb7EQvs1bnts">智能合约账户：社交恢复、Gas 代付（Paymaster）、批量操作、Passkey 登录。SOL 的 PDA、Sui 的 zkLogin 与之异曲同工，对照学习。</p></div>
+  </div>
+
+  <h3 data-page-node-id="zCtPt0maTerczx0oHFDXXq">8.2 安全：从会写 → 写得对</h3>
+  <ul data-page-node-id="qp7iNCcmsfSb4BwAUX9GWB">
+    <li data-page-node-id="vPXf2xET8OsA0iGDHGL1j5"><b data-page-node-id="woiYpHSRiwiI53xnXFutOp">必刷闯关</b>：<a href="https://ethernaut.openzeppelin.com/" target="_blank" data-page-node-id="0GPoPNEj84EBCQSWdr3v9z">Ethernaut</a> → <a href="https://www.damnvulnerabledefi.xyz/" target="_blank" data-page-node-id="hsIyRni2TR3w2V7vZXLNBh">Damn Vulnerable DeFi</a>（DeFi 攻防顶级教材，强烈推荐）→ <a href="https://github.com/Secureum/secureum-bootcamp" target="_blank" data-page-node-id="QpGkSU7OO6UEgKVgFqaezB">Secureum Bootcamp</a>（审计师训练营）。</li>
+    <li data-page-node-id="zEW0UUJKdKP5ESXFignKr5"><b data-page-node-id="ho8b22cZFiFXo8byVJZsVc">经典漏洞</b>：重入（The DAO）、预言机操纵（bZx）、私钥泄漏（热钱包事故）、供应链（库后门）。Slither / Echidna 做静态分析与模糊测试。</li>
+    <li data-page-node-id="keUwCaM5Zxl93MRzUMXkK1"><b data-page-node-id="H1o3Hic9xenmfUozxtJdmz">钱包安全专项</b>：助记词存储加密、剪贴板劫持、恶意 Approve（无限授权）、地址伪造（Sui 的 0x 前缀混淆）。</li>
+  </ul>
+
+  <h3 data-page-node-id="7cw3CEYiJbqJB8OOSIcIBg">8.3 跨链与生态</h3>
+  <p data-page-node-id="zCH2Ig9pKcp66zFE2a6Ge3">跨链桥原理（Lock-Mint / Liquidity，及著名的 Ronin/Wormhole 被盗案例）、Cosmos IBC、链抽象（ intents）。多链钱包统一架构参考 <a href="https://github.com/trustwallet/wallet-core" target="_blank" data-page-node-id="frAwsdbU0v1FQvu5RkN8R7">Trust Wallet Core</a> 开源库——它用 C++ 统一实现了包含本路线全部 5 链在内的 80+ 链的密钥派生与签名，是「多链钱包怎么做」的最佳现实答案。</p>
+
+  <h3 data-page-node-id="QldJaUwflHWEegeaUGWNML">8.4 保持前沿</h3>
+  <ul data-page-node-id="iHGWo20H8XC2qeHhcbSfNB">
+    <li data-page-node-id="aepry1FOwSONh3MkBULxbU"><a href="https://weekinethereumnews.com/" target="_blank" data-page-node-id="xsWAWFO82g9cttuQJiQXf0">Week in Ethereum</a>、Solana / Sui 官方博客与 Changelog 播客</li>
+    <li data-page-node-id="nX6b0Yl3euCtFtZJrQPyKP"><a href="https://www.rareskills.io/" target="_blank" data-page-node-id="GVenrqc8WJCvFQinIO74Dv">RareSkills</a>（高级 Solidity / DeFi 深度长文）</li>
+    <li data-page-node-id="qq471QX3vZc97Xs8gHbBKM">各链开发者 Discord + StackExchange，问题实时答疑</li>
+  </ul>
+</section>
+
+<!-- ================= 实战项目 ================= -->
+<section id="projects" data-page-node-id="VF8koUDxCDcRJFOQGywI77">
+  <h2 class="sec" data-page-node-id="KZsc72Y6o45zYyXMHJlbJP">⑨ 实战项目清单（边学边做） <span class="tag" style="background:var(--ok)" data-page-node-id="VKAna5KWH81lW4DqFbOllg">PORTFOLIO</span></h2>
+  <table data-page-node-id="1mDMJeUxNFkeOHa8OFaZqm">
+    <tr data-page-node-id="y8u8uFgpr6jMqWipBLwnse"><th data-page-node-id="hTDFgskfbtPquYkb8hnBT9">阶段</th><th data-page-node-id="nd83Gj2L3GzrER4QiIQByV">项目</th><th data-page-node-id="gFMU84pGwb1xQfXeNnrveT">验收标准</th></tr>
+    <tr data-page-node-id="BxUrokjR8wGPnPX9yCchLM"><td data-page-node-id="yTm2w1MdCqXAVfh6HReuCv">P1</td><td data-page-node-id="MVFCs4nAYLAOQT7QFBG8eO">多链地址派生器</td><td data-page-node-id="Tlp1NDhoqEF1fBs8OCvOEJ">一个助记词派生 5 链地址，与 Ian Coleman 工具比对一致</td></tr>
+    <tr data-page-node-id="yBBWLelwqVEPJUR5nAC3LL"><td data-page-node-id="Gnf7CKvFDqV3h1EQo5mWKL">P2</td><td data-page-node-id="mf0jnwsFFmWm9vNXmkgNAy">BTC 测试网 CLI 钱包</td><td data-page-node-id="7vaMG7GEZ9peHpjrWlm5mJ">生成地址 → 查 UTXO → PSBT 构建签名 → 广播成功</td></tr>
+    <tr data-page-node-id="Rddi1zZzwXhvAIGF8ZVTJx"><td data-page-node-id="yg8yohZraw36flK39DXZjm">P3</td><td data-page-node-id="3vlydc8f9YdjDQKO2g4gbn">ERC-20 + NFT + Mini-DEX</td><td data-page-node-id="CaIriQX5FXftOEUvPAWaVU">Foundry 测试全绿；前端可 Swap（读 Uniswap V2 Router 源码后仿写）</td></tr>
+    <tr data-page-node-id="3xAHRAz9Y3JJQo83qYSt4B"><td data-page-node-id="PfuTzddrkedZffuDZqJZAe">P4</td><td data-page-node-id="ftFDghXLijd4E67ADagY3O">Anchor 全栈 dApp</td><td data-page-node-id="I54U0gFc3GNvUju5aDDIwR">Escrow 或投票程序（含 PDA），React + Wallet Adapter 前端</td></tr>
+    <tr data-page-node-id="rUFybHEIivMPa3iy7Iwz8x"><td data-page-node-id="iH6hgBpDcPKZGBCffE9zKt">P5</td><td data-page-node-id="rQoWWVEEDhuL7a22WrKYoA">TRON USDT 支付 Demo</td><td data-page-node-id="VEOyA5MqxsqvlicnHnOIB7">Nile 网部署收款合约 + 监听入账 + Energy 成本核算</td></tr>
+    <tr data-page-node-id="TR4jEtUnYY6QwOdqhZmmBU"><td data-page-node-id="lESo3rF0KzlnzW50USdoOO">P6</td><td data-page-node-id="xxX9tHZ9BtuLoGwdNoiomm">Sui Move 全栈 dApp</td><td data-page-node-id="2KjIAEpMfjDa0Zl85CvtTR">发布 Move 包（对象增删改）+ dApp Kit 前端 + PTB 批量操作</td></tr>
+    <tr data-page-node-id="0JsY4OHlmnxAs9qTGxg20N"><td data-page-node-id="shjfdNwd0T8ITLhFAfHSGH">P7</td><td data-page-node-id="UhgJdDfkUIfsH1mjsxAucI">多链钱包 App（毕业设计）</td><td data-page-node-id="qHMmDFPCs8pQxSXxrQX7xA">支持 ≥3 链：助记词导入、余额聚合、转账、Swap 聚合；通过 Damn Vulnerable DeFi 前 5 关</td></tr>
+  </table>
+</section>
+
+<!-- ================= 资源汇总 ================= -->
+<section id="resources" data-page-node-id="TIE8dsd6I7QaTKxlQpxVF7">
+  <h2 class="sec" data-page-node-id="QOMhFaXpSwWicK7aML3kSm">⑩ 全量资源汇总速查 <span class="tag" style="background:#64748b" data-page-node-id="L7nwh2NSRAAovZIZRR1YUH">APPENDIX</span></h2>
+  <table data-page-node-id="lPZpgv6AR31RAUnrOZLxOJ">
+    <tr data-page-node-id="o87N7uCMm9yVyhC2Vam2or"><th data-page-node-id="uYvW5Y8myGJHONdX0Gzkrp">类别</th><th data-page-node-id="eHA3puhigCECayGG9959Hl">首选（★）</th><th data-page-node-id="yEVyi8JGEAXW2vZKwoAIAA">补充</th></tr>
+    <tr data-page-node-id="AJcd3aFz2STXjE2NVNa6IS"><td data-page-node-id="Qm27oOqDHyeBlKLsdWahPS">原理入门</td><td data-page-node-id="NPcVFTiNEW4tQgn6AakSCb">★ learnmeabitcoin.com</td><td data-page-node-id="qZyjaJLLTmhSYxlyOAKD0S">《Mastering Bitcoin》《Mastering Ethereum》开源版</td></tr>
+    <tr data-page-node-id="rjAkVWbue0LyJQYcaMmbQH"><td data-page-node-id="4vspAengT28S6P2OMgO3EU">Solidity / EVM</td><td data-page-node-id="G0n1fJeqEgqdQa4r1v33sz">★ Cyfrin Updraft + Solidity by Example</td><td data-page-node-id="eTdCsoJYGGmn9GAQNDLxVH">CryptoZombies、Solidity 官方中文文档、Dapp University</td></tr>
+    <tr data-page-node-id="rTsyU6DdtJJPgL5j9Awxlo"><td data-page-node-id="yvLmbMU0VUQNOqdfF7q5e4">ETH DeFi</td><td data-page-node-id="7L8eLyYR8uiU3g6qCOE4Ae">★ Uniswap V3 Book (RareSkills)</td><td data-page-node-id="MNn4Z9GcYBUirz2OHgpNKW">Damn Vulnerable DeFi、Aave / Compound 文档</td></tr>
+    <tr data-page-node-id="u9pct19QLFt3JRffAn3OkP"><td data-page-node-id="VCfMa5wAJD162z1XS5zqK0">Solana</td><td data-page-node-id="TGMGpXNOkWUTFTVTiVDJpN">★ Solana 官方课程 + Anchor Book</td><td data-page-node-id="QNNDVvGzXNixorEr5JcPO9">Solana Cookbook、Paulx Escrow、Solana Playground</td></tr>
+    <tr data-page-node-id="A9rIlvDrtPMAyXMHcVWdbw"><td data-page-node-id="eEuWt4thChaUFxs1gLabt0">TRON</td><td data-page-node-id="Bj1Xu2MaUKLZr146qC378c">★ 官方开发者文档（中文）+ Build a Web3 App</td><td data-page-node-id="hJE581eTe8zQ0fVF0NRCko">Nile 水龙头、TronGrid、资源模型文档</td></tr>
+    <tr data-page-node-id="RxTI8h7MSD5zjbAd7zRdhE"><td data-page-node-id="2YEKSrz84JH6KO3Oj0EOBc">Sui</td><td data-page-node-id="2Tg2gGRZBoh87QaqAZe2mz">★ docs.sui.io + Sui Move Intro Course</td><td data-page-node-id="OVy0Zzpe6hBt6yZ3ybzpFB">Move Book、Sui by Example、官方前端教程</td></tr>
+    <tr data-page-node-id="eNiD9eV4YkgHe9JAIRWU0X"><td data-page-node-id="8yhuZW0UhVvPyVRARvjZlR">安全</td><td data-page-node-id="ZAee3Y7Nov4hIGRhtN4tB0">★ Ethernaut + Damn Vulnerable DeFi</td><td data-page-node-id="P7UYzpEmTFeKYuzrXMaITa">Secureum、Slither、Consensys 最佳实践</td></tr>
+    <tr data-page-node-id="BgG0flF7DLDt7f3Iea90z9"><td data-page-node-id="gEhgZoEci0YfoytkrNC7SJ">多链实现参考</td><td data-page-node-id="50KncvIoa7KR4lBpmPQZdv">★ Trust Wallet Core（源码）</td><td data-page-node-id="H6Fvav8CVeNFv5Wqt9TgbX">MetaMask（ETH）、Phantom（SOL/ETH）源码</td></tr>
+    <tr data-page-node-id="kvy7hQOCGhVGZ45Ds4nucq"><td data-page-node-id="XMlz5AEW0ZnUfUme2vzAfo">JS 库速查</td><td data-page-node-id="wFJ2yUy4AkgznrYuxxFJok">bitcoinjs-lib · ethers/viem · @solana/web3.js · TronWeb · @mysten/sui</td><td data-page-node-id="Z3CvB8HLVL3F8Fn5CevAZ7">wagmi · Wallet Adapter · @mysten/dapp-kit</td></tr>
+  </table>
+
+  <div class="note" data-page-node-id="cpcDwZK5kYN3rPihRTABie"><b data-page-node-id="U1YYksFsXS2oT9LkDR9Xng">测试网总入口：</b>BTC→coinfaucet.eu ｜ ETH Sepolia→faucets.chain.link ｜ SOL Devnet→<code data-page-node-id="0tqfNqCfY4zXun07o8bO3G">solana airdrop</code> ｜ TRON Nile→nileex.io ｜ SUI Testnet→官方 Discord 水龙头。<b data-page-node-id="E6qJODKR0d63ZjUk10aMD0">永远不要把主网私钥用于教程练习。</b></div>
+
+  <p style="margin-top:24px;color:var(--text-3);font-size:12.5px;" data-page-node-id="BQjYu7i2VGRYu3nfrkE5kI">学习笔记由 AI 整理自各链官方文档与社区经典教程 · 2026-09 · 建议每完成一个阶段回读对应章节并补充自己的笔记</p>
+</section>
+
+</main>
+</div>
+</body>
+</html>

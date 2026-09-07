@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOL 篇 II：Rust 原生程序与 Anchor 合约开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html" class="cur">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">SOL 篇 II：Rust 原生程序与 Anchor 合约开发</span><span class="chain chain-sol">SOL</span></header>
+<main class="doc">
+<h1>SOL 篇 II：Rust 原生程序与 Anchor 合约开发</h1><p class="subtitle">用 Rust 写 Solana 程序，再用 Anchor 框架把"账户校验 / PDA / CPI / 序列化"全部自动化。主要参考：Anchor Book anchor-lang.com/docs、Paulx Escrow 教程 paulx.dev、Solana 官方课程。</p>
+
+<div class="goals"><b>本章目标：</b>
+<ol style="margin-top:6px">
+<li>掌握 Solana 开发者必需的 Rust 最小知识（所有权、生命周期、Result/？）；</li>
+<li>搭建 rustup + Solana CLI + AVM + anchor 的本地开发环境；</li>
+<li>理解原生程序的写法，知道 Anchor 帮你省掉了哪些脏活；</li>
+<li>熟用 Anchor 的 #[program] / Context / #[derive(Accounts)] 与各类约束；</li>
+<li>完整实现 Counter、Token 金库、Escrow 三个递进程序，并了解部署与安全。</li>
+</ol></div>
+
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. Rust 速通（面向 Solana 开发者）</a>
+<a href="#s2">2. 环境安装与 anchor init 结构</a>
+<a href="#s3">3. 原生程序开发（理解原理）</a>
+<a href="#s4">4. Anchor 精讲：账户、约束与 CPI</a>
+<a href="#s5">5. 实战①：Counter（PDA 存储）</a>
+<a href="#s6">6. 实战②：Token 金库 Vault</a>
+<a href="#s7">7. 实战③：Escrow 托管交易（核心）</a>
+<a href="#s8">8. 部署：build / deploy / upgrade / verify</a>
+<a href="#s9">9. 常见安全漏洞与正确写法</a>
+</div>
+
+<h2 id="s1">1. Rust 速通（面向 Solana 开发者）</h2>
+<p>Solana 程序用 <strong>Rust</strong>（也支持 C/C++、Move 等，但生态主流是 Rust）编写并编译成 BPF 字节码。你不需要成为 Rust 专家，但必须理解下面这些"卡住 90% 新手"的概念。</p>
+
+<h3>1.1 所有权、借用与生命周期</h3>
+<p>Rust 的核心规则：</p>
+<ul>
+<li>每个值有唯一<strong>所有者（owner）</strong>；所有者离开作用域，值被释放；</li>
+<li>你可以借出<strong>不可变引用 <code>&amp;T</code></strong>（多份并存）或<strong>可变引用 <code>&amp;mut T</code></strong>（同一时刻仅一份）；</li>
+<li><strong>生命周期</strong>保证引用不会比它指向的数据活得更久。</li>
+</ul>
+<pre><code>// 不可变借用：多个 &amp; 可以共存
+fn read(data: &amp;Vec&lt;u8&gt;) -&gt; u8 {
+    data[0]
+}
+
+// 可变借用：&amp;mut 独占
+fn write(data: &amp;mut Vec&lt;u8&gt;, v: u8) {
+    data.push(v);
+}
+
+fn main() {
+    let mut buf = Vec::new();
+    write(&amp;mut buf, 1);
+    let first = read(&amp;buf); // 不可变借用，OK
+    println!("{}", first);
+}
+</code></pre>
+<div class="note"><b>Solana 关联</b>：Anchor 里 <code>Context&lt;'info, T&gt;</code> 的 <code>'info</code> 就是一个<strong>生命周期参数</strong>，它约束"所有账户引用的存活期不超过本次调用"。你写 Anchor 时基本不用手写生命周期，但看到 <code>&lt;'info, ...&gt;</code> 要知道它是什么。</div>
+
+<h3>1.2 struct / enum / impl</h3>
+<pre><code>// 结构体
+struct Counter { count: u64 }
+
+// 枚举（常用于错误码、状态机）
+enum State { Open, Closed }
+
+// 为类型实现方法（类似 class 的方法）
+impl Counter {
+    fn new() -&gt; Self { Self { count: 0 } }
+    fn inc(&amp;mut self) { self.count += 1; } // &amp;mut self 借用自身可变
+}
+</code></pre>
+
+<h3>1.3 Result / Option 与 ? 操作符</h3>
+<p>Solana 程序绝不能 panic（会让整笔交易失败且仍扣费）。Rust 用 <code>Result&lt;T, E&gt;</code> 表示"可能出错"，用 <code>?</code> 提前返回错误——Anchor 会将其转成程序错误码。</p>
+<pre><code>// Result&lt;T, E&gt;：Ok(T) 或 Err(E)
+fn divide(a: u64, b: u64) -&gt; Result&lt;u64, String&gt; {
+    if b == 0 { return Err("除零".to_string()); }
+    Ok(a / b)
+}
+
+// ? 把 Err 直接向上抛出；这里是链式传播
+fn calc() -&gt; Result&lt;u64, String&gt; {
+    let x = divide(10, 2)?; // 若出错，直接 return Err
+    let y = divide(x, 0)?; // 这行会触发错误
+    Ok(y)
+}
+
+// Option&lt;T&gt;：Some(T) 或 None（表示"可能为空"）
+let maybe: Option&lt;u64&gt; = Some(5);
+if let Some(v) = maybe { println!("{}", v); }
+</code></pre>
+
+<h3>1.4 trait 与 derive</h3>
+<p><strong>trait</strong> 类似接口；<strong>derive</strong> 让编译器自动生成常见实现（如序列化、Debug、Clone）。Anchor 大量使用 derive 宏。</p>
+<pre><code>// derive 自动生成 Debug / Clone 能力
+#[derive(Debug, Clone)]
+struct Point { x: i32, y: i32 }
+
+// trait：定义共享行为
+trait Greet { fn hello(&amp;self) -&gt; String; }
+impl Greet for Point {
+    fn hello(&amp;self) -&gt; String { format!("({}, {})", self.x, self.y) }
+}
+</code></pre>
+
+<h3>1.5 cargo 工作流</h3>
+<pre><code>cargo new hello --lib   # 新建库工程
+cargo build             # 编译
+cargo test              # 跑测试
+cargo check             # 只做类型检查（快）
+</code></pre>
+
+<h2 id="s2">2. 环境安装与 anchor init 结构</h2>
+<h3>2.1 安装链路</h3>
+<pre><code># 1) 安装 Rust 工具链
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustc --version
+
+# 2) 安装 Solana CLI（agave 发行版）
+sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+solana --version
+solana config set --url devnet
+
+# 3) 用 AVM 安装并管理 Anchor 版本
+cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+avm install latest
+avm use latest
+anchor --version
+</code></pre>
+
+<h3>2.2 anchor init 项目结构</h3>
+<pre><code>anchor init my_escrow &amp;&amp; cd my_escrow
+</code></pre>
+<p>典型结构：</p>
+<table>
+<tr><th>路径</th><th>作用</th></tr>
+<tr><td>programs/&lt;name&gt;/src/lib.rs</td><td>合约源码（你主要写这里）</td></tr>
+<tr><td>tests/&lt;name&gt;.ts</td><td>TS 集成测试（用 anchor 客户端）</td></tr>
+<tr><td>Anchor.toml</td><td>工程配置（provider、cluster、scripts）</td></tr>
+<tr><td>target/idl/&lt;name&gt;.json</td><td>编译后自动生成的 IDL（接口描述）</td></tr>
+<tr><td>target/types/&lt;name&gt;.ts</td><td>自动生成的 TS 类型，供前端调用</td></tr>
+</table>
+<div class="tip"><b>Anchor.toml 关键项</b>：<code>[provider]</code> 设置默认 cluster 与钱包路径；<code>[programs.devnet]</code> 填程序部署后的地址；<code>[scripts]</code> 可加 <code>test</code> 脚本。本地联调用 <code>anchor test</code> 会自动起 <code>solana-test-validator</code>。</div>
+
+<h2 id="s3">3. 原生程序开发（理解原理）</h2>
+<p>在看 Anchor 之前，先理解"没有框架时你要做什么"。下面是一个<strong>手写原生程序</strong>的最小例子：把指令数据第一个字节存进账户。</p>
+<pre><code>use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint,
+    entrypoint::ProgramResult,
+    msg,
+    pubkey::Pubkey,
+    program_error::ProgramError,
+};
+
+// entrypoint! 宏声明程序入口
+entrypoint!(process_instruction);
+
+fn process_instruction(
+    program_id: &amp;Pubkey,
+    accounts: &amp;[AccountInfo],
+    instruction_data: &amp;[u8],
+) -&gt; ProgramResult {
+    // 1) 手动迭代账户列表
+    let accounts_iter = &amp;mut accounts.iter();
+    let account = next_account_info(accounts_iter)?;
+
+    // 2) 手动校验账户 owner 是否是本程序
+    if account.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // 3) 手动借出可变数据并写入
+    let mut data = account.try_borrow_mut_data()?;
+    data[0] = instruction_data[0];
+    msg!("存好了: {}", data[0]);
+    Ok(())
+}
+</code></pre>
+<p>你看到的<strong>每一个手写步骤</strong>，Anchor 都自动帮你做了：</p>
+<table>
+<tr><th>手写动作</th><th>Anchor 如何代劳</th></tr>
+<tr><td>迭代并取账户</td><td><code>Context&lt;'info, T&gt;</code> 按名字结构化取出</td></tr>
+<tr><td>校验 owner</td><td>账户类型 <code>Account&lt;'info, T&gt;</code> 自带 owner 检查</td></tr>
+<tr><td>反序列化数据</td><td><code>#[account]</code> 自动 Borsh 序列化/反序列化</td></tr>
+<tr><td>校验签名者/可写</td><td>约束 <code>mut</code> / <code>Signer</code></td></tr>
+<tr><td>校验 PDA seeds</td><td>约束 <code>seeds = [...], bump</code></td></tr>
+</table>
+<div class="note"><b>为什么要懂原生</b>：当 Anchor 报出"账户约束不满足"等错时，你必须知道背后它检查了什么，才能快速定位。理解原生，等于理解了 Anchor 的"底层契约"。</div>
+
+<h2 id="s4">4. Anchor 精讲：账户、约束与 CPI</h2>
+
+<h3>4.1 程序入口声明</h3>
+<pre><code>use anchor_lang::prelude::*;
+
+// declare_id! 声明本程序的地址（部署后由 Anchor 写入，需与链上一致）
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod my_program {
+    use super::*;
+
+    // 每个 pub fn 就是一条"指令"，参数 ctx 是账户上下文，其余是入参
+    pub fn hello(ctx: Context&lt;Hello&gt;, value: u64) -&gt; Result&lt;()&gt; {
+        msg!("hello {}", value);
+        Ok(())
+    }
+}
+</code></pre>
+
+<h3>4.2 Context 与 #[derive(Accounts)]</h3>
+<p><code>Context&lt;'info, T&gt;</code> 装着你这条指令要用到的所有账户，定义在同名结构体里：</p>
+<pre><code>#[derive(Accounts)]
+pub struct Hello&lt;'info&gt; {
+    #[account(mut)]
+    pub user: Signer&lt;'info&gt;,       // 签名者，必须签名
+    pub system_program: Program&lt;'info, System&gt;, // 引用的程序
+}
+</code></pre>
+
+<h3>4.3 约束属性逐个讲</h3>
+<table>
+<tr><th>约束</th><th>作用</th></tr>
+<tr><td><code>init</code></td><td>新建账户，自动从 payer 扣免租押金；需配合 <code>payer</code> 与 <code>space</code></td></tr>
+<tr><td><code>payer = x</code></td><td>指定谁出 SOL 押金</td></tr>
+<tr><td><code>space = N</code></td><td>账户数据区大小（字节）</td></tr>
+<tr><td><code>mut</code></td><td>该账户在指令中会被修改（运行时据此标记 writable）</td></tr>
+<tr><td><code>seeds = [...], bump</code></td><td>声明这是 PDA，Anchor 校验地址 = seeds+bump 推导</td></tr>
+<tr><td><code>has_one = field</code></td><td>校验账户内某字段等于另一账户公钥（如 owner 匹配）</td></tr>
+<tr><td><code>constraint = expr</code></td><td>任意布尔表达式，不满足则报错</td></tr>
+<tr><td><code>close = dest</code></td><td>指令结束时关闭账户，押金退给 dest</td></tr>
+</table>
+
+<h3>4.4 Signer / Account / AccountInfo / UncheckedAccount</h3>
+<ul>
+<li><code>Signer&lt;'info&gt;</code>：必须是交易签名者，Anchor 验证其签名。</li>
+<li><code>Account&lt;'info, T&gt;</code>：owner 必须是当前程序，且数据是类型 <code>T</code> 的 Borsh 反序列化结果——<strong>最安全</strong>。</li>
+<li><code>AccountInfo&lt;'info&gt;</code>：裸账户信息，需要你自己校验 owner/数据。</li>
+<li><code>UncheckedAccount&lt;'info&gt;</code>：完全不校验，仅当你确信安全时用（务必加 <code>/// CHECK:</code> 注释说明原因）。</li>
+</ul>
+<div class="warn"><b>安全差异</b>：优先用 <code>Account&lt;'info, T&gt;</code>。把本应校验的账户写成 <code>UncheckedAccount</code> 而忘记手动校验，是严重漏洞来源（见 s9）。</div>
+
+<h3>4.5 anchor-spl 的 Token 类型与 CPI</h3>
+<p>与 SPL Token 交互时用 <code>anchor_spl</code> 提供的包装类型（<code>Mint</code>、<code>TokenAccount</code>、<code>Token</code>、<code>AssociatedToken</code>）。CPI 跨程序调用两种方式：</p>
+<pre><code>use anchor_spl::token::{self, Token, TokenAccount, Mint, Transfer};
+
+// 方式 A：调用 anchor_spl 封装好的 CPI（内部帮你拼账户 + invoke）
+let cpi_accounts = Transfer {
+    from: ctx.accounts.src.to_account_info(),
+    to: ctx.accounts.dst.to_account_info(),
+    authority: ctx.accounts.user.to_account_info(),
+};
+let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+token::transfer(cpi_ctx, amount)?;
+
+// 方式 B：PDA 作为 authority 时，用带签名的 CPI
+let seeds = &amp;[b"vault".as_ref(), &amp;[bump]];
+let signer = &amp;[&amp;seeds[..]];
+let cpi_ctx_signed = CpiContext::new_with_signer(
+    ctx.accounts.token_program.to_account_info(),
+    cpi_accounts,
+    signer, // 告诉运行时：用这个 PDA seeds 代签
+);
+token::transfer(cpi_ctx_signed, amount)?;
+</code></pre>
+
+<h3>4.6 错误码、事件与 space 计算</h3>
+<pre><code>// 自定义错误码（? 抛出的 Err 会被映射成它）
+#[error_code]
+pub enum MyError {
+    #[msg("数量必须为正")]
+    InvalidAmount,
+    #[msg("调用者不是 owner")]
+    Unauthorized,
+}
+
+// 事件：链上可索引的日志
+#[event]
+pub struct Trade { pub maker: Pubkey, pub amount: u64 }
+emit!(Trade { maker: ctx.accounts.user.key(), amount });
+
+// space 计算规则：8 字节 discriminator（Anchor 自动加）+ 各字段
+// u64=8, Pubkey=32, bool=1, u8=1
+// 推荐用 InitSpace 宏自动算：
+#[account]
+#[derive(InitSpace)]
+pub struct Vault { pub owner: Pubkey, pub amount: u64, pub active: bool }
+// 总 space = 8 + 32 + 8 + 1 = 49
+</code></pre>
+
+<h2 id="s5">5. 实战①：Counter（PDA 存储）</h2>
+<p>最经典的入门：一个全局计数器，存在 PDA 里，任何人可自增。</p>
+<pre><code>use anchor_lang::prelude::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod counter {
+    use super::*;
+
+    pub fn initialize(ctx: Context&lt;Initialize&gt;) -&gt; Result&lt;()&gt; {
+        ctx.accounts.counter.count = 0;
+        Ok(())
+    }
+
+    pub fn increment(ctx: Context&lt;Update&gt;) -&gt; Result&lt;()&gt; {
+        let counter = &amp;mut ctx.accounts.counter;
+        // checked_add 防止 u64 溢出（安全写法）
+        counter.count = counter.count.checked_add(1).unwrap();
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize&lt;'info&gt; {
+    #[account(init, payer = user, space = 8 + 8)]
+    pub counter: Account&lt;'info, Counter&gt;,
+    #[account(mut)]
+    pub user: Signer&lt;'info&gt;,
+    pub system_program: Program&lt;'info, System&gt;,
+}
+
+#[derive(Accounts)]
+pub struct Update&lt;'info&gt; {
+    #[account(mut)]
+    pub counter: Account&lt;'info, Counter&gt;,
+}
+
+#[account]
+pub struct Counter {
+    pub count: u64, // 8 字节
+}
+</code></pre>
+<p><b>讲解</b>：<code>counter</code> 账户由 <code>init</code> 创建，<code>user</code> 付押金；<code>space = 8 + 8</code> 中第一个 8 是 discriminator，第二个 8 是 <code>u64 count</code>。客户端调用时无需知道 PDA 细节，Anchor 客户端会自动用 program_id + 空 seeds 推导地址。</p>
+
+<h3>5.1 配套 TS 测试（片段）</h3>
+<pre><code>import * as anchor from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
+
+describe("counter", () =&gt; {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+  const program = anchor.workspace.Counter as Program;
+
+  it("init + increment", async () =&gt; {
+    const counter = anchor.web3.Keypair.generate();
+    await program.methods.initialize().accounts({ counter: counter.publicKey, user: provider.wallet.publicKey, systemProgram: anchor.web3.SystemProgram.programId }).signers([counter]).rpc();
+
+    await program.methods.increment().accounts({ counter: counter.publicKey }).rpc();
+    const data = await program.account.counter.fetch(counter.publicKey);
+    console.log("count =", data.count.toString()); // 1
+  });
+});
+</code></pre>
+
+<h2 id="s6">6. 实战②：Token 金库 Vault</h2>
+<p>用户把 SPL Token 存入由 PDA 控制的金库 ATA，再可取回。重点：<strong>PDA 作为 ATA 的 authority，用 <code>new_with_signer</code> 代签放行</strong>。</p>
+<pre><code>use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Mint, Transfer};
+use anchor_spl::associated_token::AssociatedToken;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod vault {
+    use super::*;
+
+    pub fn deposit(ctx: Context&lt;Deposit&gt;, amount: u64) -&gt; Result&lt;()&gt; {
+        let cpi = Transfer {
+            from: ctx.accounts.user_ata.to_account_info(),
+            to: ctx.accounts.vault_ata.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+        };
+        token::transfer(CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi), amount)?;
+        Ok(())
+    }
+
+    pub fn withdraw(ctx: Context&lt;Withdraw&gt;, amount: u64) -&gt; Result&lt;()&gt; {
+        // PDA 签名：seeds=[b"vault", user] + bump
+        let bump = ctx.bumps.vault;
+        let seeds = &amp;[b"vault".as_ref(), ctx.accounts.user.key().as_ref(), &amp;[bump]];
+        let signer = &amp;[&amp;seeds[..]];
+        let cpi = Transfer {
+            from: ctx.accounts.vault_ata.to_account_info(),
+            to: ctx.accounts.user_ata.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        token::transfer(CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), cpi, signer), amount)?;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Deposit&lt;'info&gt; {
+    #[account(mut)]
+    pub user: Signer&lt;'info&gt;,
+    pub mint: Account&lt;'info, Mint&gt;,
+    #[account(mut)]
+    pub user_ata: Account&lt;'info, TokenAccount&gt;,
+    #[account(
+        init_if_needed, payer = user,
+        associated_token::mint = mint,
+        associated_token::authority = vault
+    )]
+    pub vault_ata: Account&lt;'info, TokenAccount&gt;,
+    #[account(seeds = [b"vault".as_ref(), user.key().as_ref()], bump)]
+    /// CHECK: PDA 作为 vault ATA 的 authority，地址由 seeds 保证
+    pub vault: UncheckedAccount&lt;'info&gt;,
+    pub token_program: Program&lt;'info, Token&gt;,
+    pub associated_token_program: Program&lt;'info, AssociatedToken&gt;,
+    pub system_program: Program&lt;'info, System&gt;,
+}
+
+#[derive(Accounts)]
+pub struct Withdraw&lt;'info&gt; {
+    #[account(mut)]
+    pub user: Signer&lt;'info&gt;,
+    pub mint: Account&lt;'info, Mint&gt;,
+    #[account(mut)]
+    pub user_ata: Account&lt;'info, TokenAccount&gt;,
+    #[account(mut, associated_token::mint = mint, associated_token::authority = vault)]
+    pub vault_ata: Account&lt;'info, TokenAccount&gt;,
+    #[account(seeds = [b"vault".as_ref(), user.key().as_ref()], bump)]
+    /// CHECK: PDA authority
+    pub vault: UncheckedAccount&lt;'info&gt;,
+    pub token_program: Program&lt;'info, Token&gt;
+    pub associated_token_program: Program&lt;'info, AssociatedToken&gt;,
+    pub system_program: Program&lt;'info, System&gt;,
+}
+</code></pre>
+<div class="tip"><b>init_if_needed</b>：首次存款时顺手创建 ATA，后续存款直接复用。注意 <code>associated_token::authority = vault</code> 让金库 PDA 成为该 ATA 的主人，普通用户无法直接动它——这正是"托管"的安全前提。</div>
+
+<h2 id="s7">7. 实战③：Escrow 托管交易（核心）</h2>
+<p>这是本篇核心：<strong>maker</strong> 想把 A 代币换成 <strong>taker</strong> 的 B 代币。流程：</p>
+<ul>
+<li><b>make</b>：maker 创建 escrow 状态账户 + 一个由 PDA 拥有的 vault ATA，并把 A 代币锁进去；</li>
+<li><b>take</b>：taker 把 B 代币付给 maker，vault 把 A 代币放给 taker，最后关闭 vault 与 escrow，押金退回。</li>
+</ul>
+<p>完整 <code>lib.rs</code>：</p>
+<pre><code>use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::associated_token::AssociatedToken;
+
+declare_id!("EscarowX1111111111111111111111111111111111");
+
+#[program]
+pub mod escrow {
+    use super::*;
+
+    pub fn make(
+        ctx: Context&lt;Make&gt;,
+        seed: u64,
+        deposit_amount: u64,
+        receive_amount: u64,
+    ) -&gt; Result&lt;()&gt; {
+        // 写入 escrow 状态
+        ctx.accounts.escrow.set_inner(Escrow {
+            maker: ctx.accounts.maker.key(),
+            mint_a: ctx.accounts.mint_a.key(),
+            mint_b: ctx.accounts.mint_b.key(),
+            receive_amount,
+            seed,
+            bump: ctx.bumps.escrow,
+        });
+
+        // 把 maker 的 A 代币转入 vault（PDA 拥有的 ATA）
+        let cpi = Transfer {
+            from: ctx.accounts.maker_ata_a.to_account_info(),
+            to: ctx.accounts.vault.to_account_info(),
+            authority: ctx.accounts.maker.to_account_info(),
+        };
+        token::transfer(CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi), deposit_amount)?;
+        Ok(())
+    }
+
+    pub fn take(ctx: Context&lt;Take&gt;) -&gt; Result&lt;()&gt; {
+        // 1) taker 付 B 给 maker
+        let pay_b = Transfer {
+            from: ctx.accounts.taker_ata_b.to_account_info(),
+            to: ctx.accounts.maker_ata_b.to_account_info(),
+            authority: ctx.accounts.taker.to_account_info(),
+        };
+        token::transfer(CpiContext::new(ctx.accounts.token_program.to_account_info(), pay_b), ctx.accounts.escrow.receive_amount)?;
+
+        // 2) vault 把 A 给 taker，PDA 代签
+        let bump = ctx.accounts.escrow.bump;
+        let seeds = &amp;[b"escrow".as_ref(), ctx.accounts.maker.key().as_ref(), &amp;ctx.accounts.escrow.seed.to_le_bytes(), &amp;[bump]];
+        let signer = &amp;[&amp;seeds[..]];
+        let give_a = Transfer {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.taker_ata_a.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        token::transfer(CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), give_a, signer), ctx.accounts.vault.amount)?;
+
+        // 3) 关闭 vault ATA，押金退 maker
+        let close_acc = anchor_spl::token::CloseAccount {
+            account: ctx.accounts.vault.to_account_info(),
+            destination: ctx.accounts.maker.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        anchor_spl::token::close_account(CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), close_acc, signer))?;
+        Ok(())
+    }
+
+    pub fn refund(ctx: Context&lt;Refund&gt;) -&gt; Result&lt;()&gt; {
+        // 把 vault 的 A 退回 maker，并关闭 escrow（押金退 maker）
+        let bump = ctx.accounts.escrow.bump;
+        let seeds = &amp;[b"escrow".as_ref(), ctx.accounts.maker.key().as_ref(), &amp;ctx.accounts.escrow.seed.to_le_bytes(), &amp;[bump]];
+        let signer = &amp;[&amp;seeds[..]];
+        let give_back = Transfer {
+            from: ctx.accounts.vault.to_account_info(),
+            to: ctx.accounts.maker_ata_a.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        token::transfer(CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), give_back, signer), ctx.accounts.vault.amount)?;
+        let close_acc = anchor_spl::token::CloseAccount {
+            account: ctx.accounts.vault.to_account_info(),
+            destination: ctx.accounts.maker.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        anchor_spl::token::close_account(CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), close_acc, signer))?;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Make&lt;'info&gt; {
+    #[account(mut)]
+    pub maker: Signer&lt;'info&gt;,
+    pub mint_a: Account&lt;'info, Mint&gt;,
+    pub mint_b: Account&lt;'info, Mint&gt;,
+    #[account(
+        init, payer = maker,
+        space = 8 + Escrow::INIT_SPACE,
+        seeds = [b"escrow".as_ref(), maker.key().as_ref(), &amp;seed.to_le_bytes()],
+        bump
+    )]
+    pub escrow: Account&lt;'info, Escrow&gt;,
+    #[account(mut)]
+    pub maker_ata_a: Account&lt;'info, TokenAccount&gt;,
+    #[account(
+        init, payer = maker,
+        associated_token::mint = mint_a,
+        associated_token::authority = vault_auth
+    )]
+    pub vault: Account&lt;'info, TokenAccount&gt;,
+    #[account(seeds = [b"vault".as_ref(), escrow.key().as_ref()], bump)]
+    /// CHECK: PDA authority of vault ATA
+    pub vault_auth: UncheckedAccount&lt;'info&gt;,
+    pub token_program: Program&lt;'info, Token&gt;,
+    pub associated_token_program: Program&lt;'info, AssociatedToken&gt;,
+    pub system_program: Program&lt;'info, System&gt;,
+}
+
+#[derive(Accounts)]
+pub struct Take&lt;'info&gt; {
+    #[account(mut)]
+    pub taker: Signer&lt;'info&gt;,
+    #[account(mut)]
+    pub maker: SystemAccount&lt;'info&gt;,
+    pub mint_a: Account&lt;'info, Mint&gt;,
+    pub mint_b: Account&lt;'info, Mint&gt;,
+    #[account(
+        mut,
+        has_one = maker @ EscrowError::NotMaker,
+        has_one = mint_a,
+        has_one = mint_b,
+        close = maker,
+        seeds = [b"escrow".as_ref(), maker.key().as_ref(), &amp;escrow.seed.to_le_bytes()],
+        bump = escrow.bump
+    )]
+    pub escrow: Account&lt;'info, Escrow&gt;,
+    #[account(mut)]
+    pub taker_ata_a: Account&lt;'info, TokenAccount&gt;,
+    #[account(mut)]
+    pub taker_ata_b: Account&lt;'info, TokenAccount&gt;,
+    #[account(mut)]
+    pub maker_ata_b: Account&lt;'info, TokenAccount&gt;,
+    #[account(mut, associated_token::mint = mint_a, associated_token::authority = vault_auth)]
+    pub vault: Account&lt;'info, TokenAccount&gt;,
+    #[account(seeds = [b"vault".as_ref(), escrow.key().as_ref()], bump)]
+    /// CHECK: PDA authority of vault ATA
+    pub vault_auth: UncheckedAccount&lt;'info&gt;,
+    pub token_program: Program&lt;'info, Token&gt;,
+    pub associated_token_program: Program&lt;'info, AssociatedToken&gt;,
+    pub system_program: Program&lt;'info, System&gt;,
+}
+
+#[derive(Accounts)]
+pub struct Refund&lt;'info&gt; {
+    #[account(mut)]
+    pub maker: Signer&lt;'info&gt;,
+    pub mint_a: Account&lt;'info, Mint&gt;,
+    #[account(
+        mut, has_one = maker,
+        close = maker,
+        seeds = [b"escrow".as_ref(), maker.key().as_ref(), &amp;escrow.seed.to_le_bytes()],
+        bump = escrow.bump
+    )]
+    pub escrow: Account&lt;'info, Escrow&gt;,
+    #[account(mut)]
+    pub maker_ata_a: Account&lt;'info, TokenAccount&gt;,
+    #[account(mut, associated_token::mint = mint_a, associated_token::authority = vault_auth)]
+    pub vault: Account&lt;'info, TokenAccount&gt;,
+    #[account(seeds = [b"vault".as_ref(), escrow.key().as_ref()], bump)]
+    /// CHECK: PDA authority
+    pub vault_auth: UncheckedAccount&lt;'info&gt;,
+    pub token_program: Program&lt;'info, Token&gt;,
+    pub associated_token_program: Program&lt;'info, AssociatedToken&gt;,
+    pub system_program: Program&lt;'info, System&gt;,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Escrow {
+    pub maker: Pubkey,   // 32
+    pub mint_a: Pubkey,  // 32
+    pub mint_b: Pubkey,  // 32
+    pub receive_amount: u64, // 8
+    pub seed: u64,       // 8
+    pub bump: u8,        // 1
+}
+
+#[error_code]
+pub enum EscrowError {
+    #[msg("调用者不是 maker")]
+    NotMaker,
+}
+</code></pre>
+
+<h3>7.1 完整 anchor test（tests/escrow.ts）</h3>
+<pre><code>import * as anchor from "@coral-xyz/anchor";
+import { Program, BN } from "@coral-xyz/anchor";
+import { PublicKey, Keypair } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+  createMint, mintTo, getAssociatedTokenAddressSync, getAccount,
+} from "@solana/spl-token";
+
+describe("escrow", () =&gt; {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+  const program = anchor.workspace.Escrow as Program;
+  const maker = Keypair.generate();
+  const taker = Keypair.generate();
+
+  let mintA: PublicKey, mintB: PublicKey;
+  let makerAtaA: PublicKey, makerAtaB: PublicKey;
+  let takerAtaA: PublicKey, takerAtaB: PublicKey;
+
+  const seed = new BN(42);
+  const depositAmount = new BN(1000);
+  const receiveAmount = new BN(500);
+
+  before(async () =&gt; {
+    // 给 maker/taker 转 SOL 当手续费
+    const sig1 = await provider.connection.requestAirdrop(maker.publicKey, 2_000_000_000);
+    await provider.connection.confirmTransaction(sig1);
+    const sig2 = await provider.connection.requestAirdrop(taker.publicKey, 2_000_000_000);
+    await provider.connection.confirmTransaction(sig2);
+
+    mintA = await createMint(provider.connection, provider.wallet.payer, maker.publicKey, null, 6);
+    mintB = await createMint(provider.connection, provider.wallet.payer, taker.publicKey, null, 6);
+
+    makerAtaA = await getAta(maker.publicKey, mintA, maker);
+    makerAtaB = await getAta(maker.publicKey, mintB, maker);
+    takerAtaA = await getAta(taker.publicKey, mintA, taker);
+    takerAtaB = await getAta(taker.publicKey, mintB, taker);
+
+    await mintTo(provider.connection, provider.wallet.payer, mintA, makerAtaA, maker, 1000);
+    await mintTo(provider.connection, provider.wallet.payer, mintB, takerAtaB, taker, 500);
+  });
+
+  async function getAta(owner: PublicKey, mint: PublicKey, payer: Keypair) {
+    const ata = getAssociatedTokenAddressSync(mint, owner);
+    // 省略创建 ATA 的代码（用 createAssociatedTokenAccount）
+    return ata;
+  }
+
+  it("make: 锁 A 进 vault", async () =&gt; {
+    const [escrowPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("escrow"), maker.publicKey.toBuffer(), seed.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+    await program.methods
+      .make(seed, depositAmount, receiveAmount)
+      .accountsPartial({
+        maker: maker.publicKey,
+        mintA, mintB,
+        escrow: escrowPda,
+        makerAtaA,
+        // vault / vaultAuth 由 Anchor 自动推导
+      })
+      .signers([maker])
+      .rpc();
+    console.log("escrow 已创建:", escrowPda.toBase58());
+  });
+
+  it("take: taker 付 B、取走 A、关账户", async () =&gt; {
+    const [escrowPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("escrow"), maker.publicKey.toBuffer(), seed.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
+    await program.methods
+      .take()
+      .accountsPartial({ taker: taker.publicKey, maker: maker.publicKey, mintA, mintB, escrow: escrowPda, takerAtaA, takerAtaB, makerAtaB })
+      .signers([taker])
+      .rpc();
+
+    const takerBalA = (await getAccount(provider.connection, takerAtaA)).amount;
+    console.log("taker 拿到 A:", takerBalA.toString()); // 1000
+  });
+});
+</code></pre>
+<div class="tip"><b>账户自动推导</b>：Anchor 客户端能用 <code>programId + seeds</code> 自动算 PDA（如 vault、vaultAuth），所以测试里很多账户不用手动传。若用旧 API 报"账户缺失"，请改用 <code>accountsPartial</code> 配合 <code>anchor.web3.PublicKey.findProgramAddressSync</code> 显式补齐。</div>
+
+<h2 id="s8">8. 部署：build / deploy / upgrade / verify</h2>
+<pre><code># 编译（生成 so + IDL + TS 类型）
+anchor build
+
+# 把程序部署到当前 cluster（Anchor.toml 里配置的 devnet）
+anchor deploy
+
+# 部署后把生成的 program id 写回 declare_id! 与 Anchor.toml，再 build 一次确保一致
+# 之后跑测试
+anchor test
+
+# 升级已部署程序（字节码替换，地址不变）
+anchor upgrade target/deploy/my_escrow.so --program-id &lt;PROGRAM_ID&gt;
+
+# 程序验证：证明链上字节码与开源源码一致（信任最小化）
+anchor verify &lt;PROGRAM_ID&gt;
+# 或 solana-verify：
+solana-verify verify-from-repo &lt;git 仓库&gt; &lt;PROGRAM_ID&gt;
+</code></pre>
+<div class="note"><b>升级 vs 不可变</b>：默认部署的程序是可升级的（由 upgrade authority 控制）。若要不可变，部署后执行 <code>solana program set-upgrade-authority &lt;PROGRAM_ID&gt; --final</code> 放弃升级权限。用户应优先与"已验证且不可变"的程序交互。</div>
+
+<h2 id="s9">9. 常见安全漏洞与正确写法</h2>
+
+<h3>9.1 缺 signer 检查</h3>
+<p>错误：把敏感操作账户写成 <code>Account</code> 而非 <code>Signer</code>，任何人都能调用。</p>
+<pre><code>// ❌ 错误：没有 Signer 约束，任意账户都能当 user 转走资金
+pub struct Bad&lt;'info&gt; { pub user: AccountInfo&lt;'info&gt;, pub vault: Account&lt;'info, Vault&gt; }
+
+// ✅ 正确：必须是签名者
+pub struct Good&lt;'info&gt; { #[account(mut)] pub user: Signer&lt;'info&gt;, pub vault: Account&lt;'info, Vault&gt; }
+</code></pre>
+
+<h3>9.2 账户 owner 未校验</h3>
+<p>错误：用 <code>UncheckedAccount</code> 接收本应是某个程序的账户，却没验 owner。</p>
+<pre><code>// ❌ 错误：拿到 token_account 但没验证它是 Token Program 拥有的 ATA
+#[account(mut)] pub token_account: UncheckedAccount&lt;'info&gt;
+
+// ✅ 正确：用 Account&lt;'info, TokenAccount&gt;，Anchor 自动校验 owner == Token Program
+#[account(mut)] pub token_account: Account&lt;'info, TokenAccount&gt;
+</code></pre>
+
+<h3>9.3 PDA seeds 可预测被抢</h3>
+<p>错误：用可被用户操控的 seeds 推导 PDA，攻击者抢先创建同名账户并植入恶意数据。</p>
+<pre><code>// ❌ 错误：seeds 含用户随意传入的 pubkey，攻击者可抢注
+seeds = [user_supplied_key.as_ref()], bump
+
+// ✅ 正确：seeds 至少含 program 自身或不可伪造的上下文
+seeds = [b"vault".as_ref(), maker.key().as_ref()], bump
+</code></pre>
+
+<h3>9.4 任意 CPI 账户替换</h3>
+<p>错误：CPI 时直接信任调用方传入的 token_program，攻击者换成假程序。</p>
+<pre><code>// ❌ 错误：token_program 由用户传，可能被替换成恶意程序
+// ✅ 正确：硬编码校验
+#[account(address = token::ID)]
+pub token_program: Program&lt;'info, Token&gt;,
+</code></pre>
+
+<h3>9.5 重初始化攻击</h3>
+<p>错误：<code>init</code> 的账户没加唯一性约束，攻击者重复调用把状态重置。</p>
+<pre><code>// ❌ 错误：没有把关键字段放进 seeds，导致可重复 init
+#[account(init, payer = user, space = 8 + 32)] pub escrow: Account&lt;'info, Escrow&gt;
+
+// ✅ 正确：用 maker + seed 作为唯一 seeds，重复创建会因"账户已存在"而失败
+#[account(init, payer = user, space = 8 + Escrow::INIT_SPACE, seeds = [b"escrow".as_ref(), maker.key().as_ref(), &amp;seed.to_le_bytes()], bump)]
+pub escrow: Account&lt;'info, Escrow&gt;,
+</code></pre>
+<div class="warn"><b>审计清单</b>：每次写指令前自问——谁必须签名？哪个账户 owner 必须校验？PDA seeds 攻击者能否抢注？CPI 程序地址是否硬编码？重复调用是否会被重置？这五条能挡住绝大多数 Solana 合约漏洞。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>本地 <code>anchor init</code> 一个新工程，跑通默认的 <code>anchor test</code> 空测试。</li>
+<li>把"实战①Counter"完整抄写、编译、测试，观察 IDL 文件内容。</li>
+<li>实现 Vault 的 deposit/withdraw，并在测试里分别存 100、取 40，验证余额变化。</li>
+<li>完整实现 Escrow 的 make/take/refund，写测试覆盖"正常成交"与"maker 退款"两条路径。</li>
+<li>在 Escrow 的 <code>take</code> 里故意删掉 <code>has_one = maker</code>，看测试会报什么错。</li>
+<li>（进阶）给 Vault 加一个 <code>Admin</code> PDA，只有 admin 能"紧急取出"金库资金，练习 Constraint 与 PDA 权限。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能解释 Rust 所有权与 <code>&amp;T</code> / <code>&amp;mut T</code> 在 Anchor 账户里的体现；</li>
+<li>能说出 <code>?</code> 操作符在 Solana 程序里为什么不能省；</li>
+<li>能搭建 rustup + Solana CLI + AVM + anchor 环境并 <code>anchor test</code>；</li>
+<li>能讲清 Anchor 相比原生程序帮你做了哪些账户校验；</li>
+<li>会用 <code>init/payer/space、seeds/bump、mut、has_one、constraint、close</code> 等约束；</li>
+<li>能区分 <code>Signer / Account / AccountInfo / UncheckedAccount</code> 的安全等级；</li>
+<li>能写出用 PDA 代签的 <code>CpiContext::new_with_signer</code> CPI；</li>
+<li>能独立完成 Escrow 的 make/take 并解释 vault PDA 的作用；</li>
+<li>会部署（anchor deploy/upgrade）并理解程序验证的意义；</li>
+<li>能列举 5 类常见漏洞并给出正确写法。</li>
+</ul></div>
+
+<div class="pager"><a href="07-sol.html"><b>上一篇</b>← SOL 篇 I：概念与钱包开发</a><a class="next" href="09-sol-defi.html"><b>下一篇</b>SOL 篇 III：DeFi 与生态实战 →</a></div>
+</main></body></html>

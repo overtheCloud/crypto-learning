@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRON 篇 I：概念与钱包开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html" class="cur">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">TRON 篇 I：概念与钱包开发</span><span class="chain chain-tron">TRON</span></header>
+<main class="doc">
+<h1>TRON 篇 I：概念与钱包开发</h1><p class="subtitle">读懂 TRON 的资源模型与账户权限，用 Node.js 从零写出能转账、能收 USDT 的钱包。主要参考：TRON 官方开发者文档 developers.tron.network 与中文版 cn.developers.tron.network。</p>
+<div class="goals"><b>本章目标：</b>
+<ol>
+<li>说清 TRON 的 DPoS 共识、TVM 与 EVM 的异同；</li>
+<li>理解并能在代码里实现 hex 地址 ↔ T 开头 Base58Check 地址的互转；</li>
+<li>吃透 Bandwidth / Energy 资源模型，能估算一笔 TRX 与一笔 TRC-20 转账的真实成本；</li>
+<li>用 TronWeb 完成助记词派生、TRX 转账、TRC-20 余额查询与转账的完整可运行代码；</li>
+<li>集成 TronLink、实现离线签名 + 广播分离，并避开新地址未激活、能量不足烧 TRX 等常见坑。</li>
+</ol></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. TRON 定位：高吞吐支付链</a>
+<a href="#s2">2. DPoS 共识与出块</a>
+<a href="#s3">3. TVM 与 EVM 兼容性</a>
+<a href="#s4">4. 地址体系：0x41 前缀与 Base58Check</a>
+<a href="#s5">5. 账户激活机制</a>
+<a href="#s6">6. 资源模型精讲（本篇重点）</a>
+<a href="#s7">7. 交易结构与 txID</a>
+<a href="#s8">8. 确认与固化</a>
+<a href="#s9">9. 账户权限体系（多签）</a>
+<a href="#s10">10. 钱包开发环境准备</a>
+<a href="#s11">11. TronWeb 实例化与助记词派生</a>
+<a href="#s12">12. 地址格式互转代码</a>
+<a href="#s13">13. TRX 转账完整流程</a>
+<a href="#s14">14. TRC-20（USDT）实战</a>
+<a href="#s15">15. 交易结果解析</a>
+<a href="#s16">16. 事件监听（TronGrid）</a>
+<a href="#s17">17. TronLink 浏览器集成</a>
+<a href="#s18">18. 离线签名与广播分离</a>
+<a href="#s19">19. 常见坑与排查清单</a>
+</div>
+
+<h2 id="s1">1. TRON 定位：高吞吐支付链</h2>
+<p>TRON 是一条 2018 年主网上线的公链，定位非常聚焦：<strong>高吞吐、低费用、面向稳定币支付</strong>。对于做过以太坊的钱包开发者，最容易记住的一句话是：<em>“TRON 把 EVM 的精华搬了过来，但把 gas 费模型换成了资源（Bandwidth/Energy）质押模型，并把出块速度提了上来。”</em></p>
+<p>几个让 TRON 在支付场景特别有存在感的事实：</p>
+<ul>
+<li><b>USDT 最大流通网络之一</b>：Tether 在 TRON 上发行的 USDT-TRC20 长期占据全网 USDT 流通量的最大份额，原因是转账快（秒级）、费用极低（资源充足时近乎免费）。</li>
+<li><b>亚洲 OTC 与商户支付首选</b>：在跨境汇款、场外交易、链上收款场景中，TRX + USDT-TRC20 组合是大量钱包与交易所的底层通道。</li>
+<li><b>EVM 兼容</b>：你已有的 Solidity 知识基本能直接复用，只是编译器版本、地址前缀、费用模型有差异（见第 3、6 节）。</li>
+</ul>
+<div class="note"><b>提示：</b>本篇假设你已读完公共基础篇，懂 secp256k1、ECDSA、助记词/BIP39、HD 派生（BIP44），以及以太坊账户与合约的基本概念。我们不再重复这些，只讲 TRON 的“差异点”。</div>
+
+<h2 id="s2">2. DPoS 共识与出块</h2>
+<p>TRON 采用 <strong>DPoS（Delegated Proof of Stake，委托权益证明）</strong>，核心是一组被选举出来的出块节点。</p>
+<ul>
+<li><b>27 个超级代表（Super Representative, SR）</b>：全网用户用 TRX 给候选人投票，票数前 27 名成为 SR，轮流负责出块。候选 SR 之外的节点称为“超级代表合伙人”（SR Partner）。</li>
+<li><b>投票机制</b>：用户质押 TRX（冻结/投票）获得投票权，给候选人投票<em>不产生消耗</em>，但投票权随质押释放而消失，可随时改投。</li>
+<li><b>出块速度</b>：约 <strong>3 秒一个区块</strong>，对比以太坊 12 秒、比特币 600 秒，这是 TRON 支付体验“快”的来源。</li>
+<li><b>奖励分发</b>：每个新区块给 SR 的区块奖励（约 16 TRX/块，随参数调整）和投票奖励，SR 通常再把自己的收益按投票份额返给用户（节点分红）。</li>
+</ul>
+<div class="quote">一句话记忆：以太坊是“全球矿工竞争打包”，TRON 是“27 个当选代表轮流值班”，所以更快、更省，但更中心化一些——这是取舍，不是缺陷。</div>
+<p>对钱包开发者的直接影响：</p>
+<ul>
+<li>交易从广播到被打包通常 <strong>3 秒内可见</strong>，确认体验远好于 BTC；</li>
+<li>因为出块快、回滚概率高，业务上要区分“首次打包（1 确认）”与“固化（solidified，约 19 秒、约 6+ 确认）”——见第 8 节。</li>
+</ul>
+
+<h2 id="s3">3. TVM 与 EVM 兼容性</h2>
+<p>TRON 的虚拟机叫 <strong>TVM（TRON Virtual Machine）</strong>，它在设计上高度对齐以太坊 EVM，目标就是让 Solidity 合约“几乎无改动”地迁移过来。</p>
+<table>
+<tr><th>维度</th><th>EVM / 以太坊</th><th>TVM / TRON</th></tr>
+<tr><td>字节码执行</td><td>EVM opcode</td><td>TVM opcode，与 EVM 高度一致，多数 opcode 相同</td></tr>
+<tr><td>智能合约语言</td><td>Solidity / Vyper</td><td>Solidity 为主（TVM 还支持部分 TVM 汇编）</td></tr>
+<tr><td>计算计费</td><td>Gas（ETH 支付）</td><td>Energy（TRX 质押或燃烧抵扣），概念类似但获取方式不同</td></tr>
+<tr><td>存储计费</td><td>Gas（Storage）</td><td>TRON 也有存储概念，但钱包开发更关心 Bandwidth/Energy</td></tr>
+<tr><td>地址表示</td><td>20 字节，0x 前缀 hex</td><td>21 字节：0x41 + 20 字节公钥哈希，T 开头 Base58Check</td></tr>
+<tr><td>编译器版本</td><td>solc 跟进最新</td><td>TVM 编译器版本相对滞后，需用受支持版本（见第 11 篇）</td></tr>
+</table>
+<div class="tip"><b>迁移要点：</b>同一份 Solidity 源码，在 TronBox 里用受支持的 solc 重新编译即可部署到 TRON；但<strong>地址字面量、block.timestamp 语义、Energy 计费</strong>等细节要小心（第 11 篇有完整差异表）。</div>
+
+<h2 id="s4">4. 地址体系：0x41 前缀与 Base58Check</h2>
+<p>这是钱包开发者最该写对的一块。TRON 的地址本质来自<strong>与以太坊完全相同的 secp256k1 公钥推导</strong>：</p>
+<ol>
+<li>私钥 → 公钥（secp256k1，压缩或解压均可，取 Keccak-256 哈希）；</li>
+<li>取公钥哈希的<strong>低 20 字节</strong>作为地址主体（和 ETH 一样）；</li>
+<li>TRON 在此 20 字节前<strong>补一个字节 0x41</strong>（ASCII “A”，代表 TRON 主网），得到 21 字节；</li>
+<li>对这 21 字节做 <strong>Base58Check 编码</strong>（双 SHA-256 校验和 + Base58 字母表），得到以 <code>T</code> 开头的人类可读地址。</li>
+</ol>
+<div class="warn"><b>极易混淆：</b>TRON 内部存储/API 用的是 <code>41xxxx</code> 的 hex 地址，而用户看到的是 <code>Txxxx</code> 的 Base58 地址。二者是同一地址的两种编码，<strong>不是两个地址</strong>。RPC 的 contract 字段里常用 hex 形式，前端展示用 T 形式。</div>
+
+<h3>4.1 hex ↔ base58 互转算法</h3>
+<p>算法步骤（你完全可以用纯 JS 实现，无需第三方库）：</p>
+<ul>
+<li><b>hex(21B) → base58</b>：在 21 字节前补 1 个 0x00 字节（Bitcoin 风格的 version 占位，便于 Base58Check 的 leading-zero 处理）→ 计算双 SHA256 取前 4 字节作 checksum → 拼接 [payload + checksum] → 用 Base58 字母表编码。</li>
+<li><b>base58 → hex</b>：Base58 解码 → 去掉末尾 4 字节 checksum（可校验）→ 去掉开头 1 字节 version（0x00）→ 得到 21 字节，首字节须为 0x41。</li>
+</ul>
+<p>纯 JS 实现（仅依赖 Node 内置 <code>crypto</code>，无外部库）：</p>
+<pre><code>// tronAddress.js —— TRON 地址 hex &lt;=&gt; base58 互转（纯 Node 实现，无第三方库）
+const crypto = require("crypto");
+
+// Base58 字母表（与比特币相同）
+const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const ALPHABET_MAP = {};
+for (let i = 0; i &lt; ALPHABET.length; i++) ALPHABET_MAP[ALPHABET[i]] = i;
+
+function sha256(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest();
+}
+
+// 大数 Base58 编码（处理任意长度字节）
+function base58Encode(buffer) {
+  let digits = [0];
+  for (let i = 0; i &lt; buffer.length; i++) {
+    let carry = buffer[i];
+    for (let j = 0; j &lt; digits.length; j++) {
+      carry += digits[j] &lt;&lt; 8;
+      digits[j] = carry % 58;
+      carry = (carry - digits[j]) / 58;
+    }
+    while (carry &gt; 0) {
+      digits.push(carry % 58);
+      carry = (carry - (carry % 58)) / 58;
+    }
+  }
+  let result = "";
+  // 前导零（0x00）转为前导 '1'
+  for (let i = 0; buffer[i] === 0 &amp;&amp; i &lt; buffer.length - 1; i++) result += "1";
+  for (let k = digits.length - 1; k &gt;= 0; k--) result += ALPHABET[digits[k]];
+  return result;
+}
+
+function base58Decode(str) {
+  const bytes = [0];
+  for (let i = 0; i &lt; str.length; i++) {
+    const c = str[i];
+    if (!(c in ALPHABET_MAP)) throw new Error("非法 Base58 字符: " + c);
+    let carry = ALPHABET_MAP[c];
+    for (let j = 0; j &lt; bytes.length; j++) {
+      carry += bytes[j] * 58;
+      bytes[j] = carry &amp; 0xff;
+      carry &gt;&gt;= 8;
+    }
+    while (carry &gt; 0) {
+      bytes.push(carry &amp; 0xff);
+      carry &gt;&gt;= 8;
+    }
+  }
+  // 前导 '1' 还原为前导 0x00
+  for (let i = 0; i &lt; str.length &amp;&amp; str[i] === "1"; i++) bytes.push(0);
+  return Buffer.from(bytes.reverse());
+}
+
+// hex(0x41 开头 21 字节) -&gt; T 开头 base58
+function hexToBase58(hex) {
+  const addr = Buffer.from(hex.replace(/^0x/, ""), "hex");
+  if (addr.length !== 21 || addr[0] !== 0x41) throw new Error("非法 TRON hex 地址");
+  const versioned = Buffer.concat([Buffer.from([0x00]), addr]); // 补 1 字节 version
+  const checksum = sha256(sha256(versioned)).slice(0, 4);
+  return base58Encode(Buffer.concat([versioned, checksum]));
+}
+
+// T 开头 base58 -&gt; hex(0x41 开头)
+function base58ToHex(base58) {
+  const decoded = base58Decode(base58);
+  const body = decoded.slice(0, decoded.length - 4);     // 去 checksum
+  const payload = body.slice(1);                          // 去 version 0x00
+  if (payload.length !== 21 || payload[0] !== 0x41) throw new Error("校验失败或非 TRON 地址");
+  // 校验 checksum
+  const checksum = decoded.slice(decoded.length - 4);
+  const calc = sha256(sha256(body)).slice(0, 4);
+  if (Buffer.compare(checksum, calc) !== 0) throw new Error("Base58Check 校验和不匹配");
+  return "0x" + payload.toString("hex");
+}
+
+// 使用示例
+const hexAddr = "41" + "a6e56f0a3c9c1e2b4d5e6f70819a0b1c2d3e4f50"; // 21 字节
+const b58 = hexToBase58(hexAddr);
+console.log("base58:", b58);
+console.log("back  :", base58ToHex(b58));
+</code></pre>
+<div class="tip"><b>实战建议：</b>生产环境直接用 TronWeb 内置的 <code>tronWeb.address.fromHex()</code> / <code>toHex()</code> 即可。上面代码的价值在于让你<em>真正理解</em>地址是怎么来的——面试与排查假地址攻击时极有用。</div>
+
+<h2 id="s5">5. 账户激活机制</h2>
+<p>TRON 有一个以太坊没有的概念：<strong>新地址默认未激活（account not exist）</strong>。</p>
+<ul>
+<li>一个从未在链上出现过的地址，无法接收任何资产，也不能作为交易发起方，直到它<strong>被“激活”</strong>。</li>
+<li>激活方式：<strong>任意已激活地址向该新地址转入 ≥ 1 TRX</strong>（通常是恰好转 1 TRX 或 0.1 TRX 等），该笔转账本身即把目标地址“创建”到账本里。</li>
+<li>激活后，地址才有余额、资源、合约数据等状态。TRC-20 代币也只能在已激活地址间流转。</li>
+</ul>
+<div class="warn"><b>钱包开发大坑：</b>给用户生成新充值地址后，若直接往里打 USDT（TRC-20），交易会失败，因为地址未激活。正确流程是<strong>先由热钱包向新地址转 1 TRX 激活，再转 USDT</strong>，或要求用户先用 TRX 触发一次任意交易。第 12 篇的收款系统会专门处理这一点。</div>
+
+<h2 id="s6">6. 资源模型精讲（本篇重点）</h2>
+<p>这是 TRON 与以太坊最大的差异，也是钱包成本估算的核心。以太坊用 gas 直接烧 ETH；TRON 把链上操作需要的“资源”拆成两类：</p>
+<table>
+<tr><th>资源</th><th>用途</th><th>免费额度</th><th>获取方式</th></tr>
+<tr><td><b>Bandwidth（带宽）</b></td><td>普通转账（TransferContract）、交易字节本身的消耗</td><td>每个激活账户每日约 600 B 免费带宽（按日恢复）</td><td>质押 TRX 获得；不足时烧 TRX</td></tr>
+<tr><td><b>Energy（能量）</b></td><td>调用智能合约（TriggerSmartContract）、合约内部计算</td><td>无免费额度</td><td>质押 TRX 获得；不足时烧 TRX 抵扣（更贵）</td></tr>
+</table>
+
+<h3>6.1 为什么有“资源”而不是单纯烧币</h3>
+<p>TRON 的设计哲学是：<strong>长期持有者通过质押 TRX 换取免费资源，频繁使用者则按资源消耗燃烧 TRX</strong>。这样“网络的使用权”某种程度上回馈给生态贡献者（质押者），而不是全部销毁。对商户而言，<em>预质押一批 TRX 换 Energy，可以让成千上万笔 USDT 转账几乎零边际成本</em>。</p>
+
+<h3>6.2 Stake 2.0 质押获取资源</h3>
+<p>TRON 的资源获取经历了 Stake 1.0 → <strong>Stake 2.0</strong> 的演进。Stake 2.0 的关键改进：</p>
+<ul>
+<li>可以随时 <code>delegate</code>（委托）资源给<em>任意其他地址</em>，而不再像 1.0 那样只能给自己；</li>
+<li>解质押有约 14 天等待期（unstake 后资源与投票权逐步释放）；</li>
+<li>账户可同时持有“投票权”和“资源委托”，更灵活。</li>
+</ul>
+
+<h3>6.3 费用估算公式</h3>
+<p>合约调用消耗 Energy 不足时，按如下规则燃烧 TRX：</p>
+<pre><code>// 资源消耗与 TRX 燃烧估算（官方参数，会随链上动态调节，以下为常用量级）
+// 1 Energy 约等价于 0.00028 TRX 燃烧（主网常见值，priceInTrx = SUN 计价）
+// 实际单价由链上 chainParameter: getEnergyFee 决定
+const ENERGY_FEE_SUN = 280;       // 1 Energy 的 TRX 燃烧价（单位 SUN，1 TRX = 1_000_000 SUN）
+const TRX_PER_ENERGY = ENERGY_FEE_SUN / 1_000_000; // = 0.00028 TRX
+
+function burnTrxFor(energyNeeded, energyOwned) {
+  const shortfall = Math.max(0, energyNeeded - energyOwned);
+  return shortfall * TRX_PER_ENERGY; // 需燃烧 TRX
+}
+
+// 例：一次普通 USDT transfer 约需 13000~14000 Energy
+const need = 13800;
+const owned = 0; // 未质押
+console.log("需燃烧 TRX:", burnTrxFor(need, owned).toFixed(4), "TRX"); // ~3.86 TRX
+</code></pre>
+
+<h3>6.4 实测对照表（TRX 转账 vs TRC-20 转账成本）</h3>
+<p>下表为典型场景估算（实际以链上参数为准，仅作量级参考）：</p>
+<table>
+<tr><th>操作</th><th>消耗资源</th><th>已质押足额资源</th><th>未质押（燃烧 TRX）</th></tr>
+<tr><td>TRX 普通转账（给自己/他人）</td><td>~200 Bandwidth</td><td>免费（用每日免费额度或质押带宽）</td><td>~0.27 TRX（按 Bandwidth 单价）</td></tr>
+<tr><td>USDT-TRC20 transfer</td><td>~13800 Energy + 少量 Bandwidth</td><td>近乎免费（用质押 Energy）</td><td>~3.8 TRX</td></tr>
+<tr><td>USDT 授权 approve</td><td>~13000 Energy</td><td>近乎免费</td><td>~3.6 TRX</td></tr>
+<tr><td>复杂合约交互（DEX 兑换）</td><td>50000~200000 Energy</td><td>视质押量</td><td>14~56 TRX</td></tr>
+</table>
+<div class="tip"><b>成本直觉：</b>“资源充足时免费，资源不足时计费”是 TRON 的核心体验。商户收款系统（第 12 篇）的关键优化，就是<strong>批量质押/租赁 Energy 把单笔成本压到接近 0</strong>。</div>
+
+<h3>6.5 查询账户资源与质押</h3>
+<p>在写钱包前，先学会“看”一个地址当前有多少资源。TronWeb 提供了账户查询，但更精确的资源数值建议直接调节点 API：</p>
+<pre><code>// demo-resource.js —— 查询账户资源与质押情况
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+
+async function showResources(addrBase58) {
+  const account = await tronWeb.trx.getAccount(addrBase58);
+  // account 关键字段：
+  // - balance: 余额（SUN）
+  // - frozen: [{ frozen_balance, expire_time }]  质押的 TRX（SUN）
+  // - account_resource: { frozen_balance_for_energy, delegated_frozen_balance_for_energy, energy_window_size ... }
+  // - net_window_size / free_net_usage 等带宽信息
+  console.log("余额(TRX):", account.balance / 1e6);
+  console.log("质押 TRX :", account.frozen
+    ? account.frozen.map(f =&gt; (f.frozen_balance / 1e6)).join(", ")
+    : "无");
+  const ar = account.account_resource || {};
+  console.log("Energy 质押:", (ar.frozen_balance_for_energy || {}).frozen_balance
+    ? (ar.frozen_balance_for_energy.frozen_balance / 1e6) + " TRX" : "无");
+}
+showResources("T你的地址");
+</code></pre>
+
+<h3>6.6 质押 TRX 换取 Bandwidth / Energy（Stake 2.0）</h3>
+<p>钱包里常见的“冻结/质押”按钮，本质是调用 <code>freezeBalanceV2</code> 把 TRX 锁住，换取资源或投票权（Stake 2.0）。解锁需等待约 14 天。</p>
+<pre><code>// demo-stake.js —— 质押 100 TRX 换 Energy（Stake 2.0 freezeBalanceV2）
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({
+  fullHost: "https://nile.trongrid.io",
+  privateKey: "你的Nile私钥",
+});
+
+async function stakeForEnergy(trxAmount, resourceType = "ENERGY") {
+  // freezeBalanceV2(amountSun, resourceType)
+  const tx = await tronWeb.transactionBuilder.freezeBalanceV2(
+    tronWeb.toSun(trxAmount),   // 质押数量（SUN）
+    resourceType                // "ENERGY" 或 "BANDWIDTH"
+  );
+  const signed = await tronWeb.trx.sign(tx);
+  const ret = await tronWeb.trx.broadcast(signed);
+  console.log("质押广播:", ret);
+
+  // 若要把资源委托给另一个地址（如归集/收款子地址），再调用 delegateResource
+  // await tronWeb.transactionBuilder.delegateResource(tronWeb.toSun(trxAmount), toAddr, resourceType);
+  return ret;
+}
+stakeForEnergy(100, "ENERGY");
+</code></pre>
+<div class="tip"><b>商户优化思路：</b>把一大笔 TRX（如 1000 TRX）质押换 Energy，可支撑数万笔 USDT 转账几乎零成本；若瞬时需求超过自有 Energy，还可临时<strong>租赁 Energy</strong>（第三方市场，见第 12 篇成本对比）。质押解锁的 14 天等待期是TRON 防止资源被瞬间抛售的设计。</div>
+
+<h2 id="s7">7. 交易结构与 txID</h2>
+<p>一笔 TRON 交易（Transaction）的 JSON 结构大致如下：</p>
+<pre><code>// TRON 交易（TriggerSmartContract 为例）的典型结构
+{
+  "visible": false,                 // false=地址用 hex；true=用 base58
+  "txID": "ab12...ef",              // 交易的唯一 ID（raw_data 的 SHA256）
+  "raw_data": {
+    "contract": [
+      {
+        "parameter": {
+          "value": {
+            "owner_address": "41xxxx",          // 调用者（hex）
+            "contract_address": "41xxxx",        // 被调合约（hex）
+            "data": "0xa9059cbb..."              // 编码后的函数调用（如 transfer）
+          }
+        },
+        "type": "TriggerSmartContract"           // 合约触发类型
+      }
+    ],
+    "ref_block_bytes": "8fa2",
+    "ref_block_hash": "a1b2...",
+    "expiration": 1700000000000,                 // 过期时间（毫秒）
+    "timestamp": 1699999999000
+  },
+  "raw_data_hex": "0a...",                       // raw_data 的十六进制
+  "signature": [ "3045...", ... ]                // 签名数组（多签时为多个）
+}
+</code></pre>
+<p><b>常见 contract 类型：</b></p>
+<ul>
+<li><code>TransferContract</code>：TRX 转账（owner → to，amount 单位 SUN）；</li>
+<li><code>TransferAssetContract</code>：TRC-10 资产转账（TRC-10 是 TRON 内置代币标准，现多被 TRC-20 取代）；</li>
+<li><code>TriggerSmartContract</code>：触发智能合约调用（余额查询、转账、任意合约方法）；</li>
+<li><code>AccountPermissionUpdateContract</code>：更新账户权限/多签配置（见第 9 节）。</li>
+</ul>
+<div class="note"><b>txID 计算：</b>txID = <code>SHA256(raw_data 序列化)</code>。注意签名不改变 txID，因为 txID 只覆盖 raw_data。钱包广播前可本地先计算 txID，后续用它轮询确认状态。</div>
+
+<h2 id="s8">8. 确认与固化（solidified）</h2>
+<p>因为 DPoS 出块快（3 秒），短距离分叉概率高于 BTC/ETH，所以 TRON 引入了<strong>固化（solidified）</strong>概念：</p>
+<ul>
+<li><b>1 确认</b>：交易被打包进某个区块，约 3 秒可见，但理论上仍可能被回滚；</li>
+<li><b>固化（solidified）</b>：交易所在区块获得足够后续区块确认（通常约 <strong>19 秒，约 6+ 区块</strong>），被视为不可逆。</li>
+</ul>
+<div class="tip"><b>业务权衡：</b>小额/高并发场景可用“1 确认即放行”（如显示余额、发通知）；大额/充值入账建议等<strong>固化（约 19 秒）</strong>再确认为最终入账，规避短回滚风险。第 12 篇收款系统会据此设计确认策略。</div>
+
+<h2 id="s9">9. 账户权限体系（多签）</h2>
+<p>这是 TRON 的<strong>特色能力</strong>，钱包开发（尤其企业/多签钱包）必须懂。以太坊的多签依赖合约（如 Gnosis Safe），而 TRON 把多签<strong>内建在协议层</strong>。</p>
+<p>每个账户有三类权限：</p>
+<table>
+<tr><th>权限</th><th>作用</th><th>阈值/权重</th></tr>
+<tr><td><b>owner（所有者）</b></td><td>最高权限，可做任何操作<em>并修改权限结构本身</em></td><td>可设阈值</td></tr>
+<tr><td><b>witness</b></td><td>仅 SR 候选人相关，普通钱包用不到</td><td>—</td></tr>
+<tr><td><b>active（活跃）</b></td><td>日常操作权限（转账、调合约），可分散给多个 key</td><td>可设阈值与多 key 权重</td></tr>
+</table>
+<p>权限结构核心参数：</p>
+<ul>
+<li><code>threshold</code>：阈值，签名总权重 ≥ 阈值时该权限生效；</li>
+<li><code>keys[]</code>：每个 key 含 <code>address</code>（签名公钥地址）和 <code>weight</code>（权重）；</li>
+<li>多签 = 把多个 key 加入 active 权限，各自权重相加 ≥ 阈值。</li>
+</ul>
+<p>构造一个 2-of-3 多签 active 权限的示例（用 TronWeb 设置）：</p>
+<pre><code>// 设置账户为 2-of-3 多签（active 权限需 3 个 key 中至少 2 个签名）
+// 前提：调用者须持有 owner 权限
+const owner = tronWeb.defaultAddress; // 当前 owner
+const keys = [
+  { address: tronWeb.address.toHex("TKeyA..."), weight: 1 },
+  { address: tronWeb.address.toHex("TKeyB..."), weight: 1 },
+  { address: tronWeb.address.toHex("TKeyC..."), weight: 1 },
+];
+const permission = {
+  type: 2,                 // 2 = active 权限
+  id: 2,
+  permission_name: "active",
+  threshold: 2,           // 需要 2 个权重
+  operations: "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", // 允许全部操作
+  keys: keys,
+};
+const tx = await tronWeb.transactionBuilder.updateAccountPermissions(
+  owner.address, // 目标账户（此处为自己）
+  null,          // owner 权限不修改
+  permission,    // active 权限配置
+  null           // witness 不修改
+);
+const signed = await tronWeb.trx.sign(tx); // 由 owner 签名
+const ret = await tronWeb.trx.broadcast(signed);
+console.log("多签配置广播结果:", ret);
+</code></pre>
+<div class="warn"><b>企业钱包重点：</b>TRON 协议层多签意味着<strong>多签交易本身就是一个普通交易</strong>，节点会校验签名权重；同时每笔业务交易携带多个 signature。构建离线多签钱包时，要分别收集各 key 的 signature 再合并广播（见第 18 节冷钱包思路）。</div>
+
+<h2 id="s10">10. 钱包开发环境准备</h2>
+<p>我们用 Node.js + TronWeb 在 <strong>Nile 测试网</strong>上实操。Nile 是 TRON 官方测试网，配套水龙头可领测试 TRX 与 USDT。</p>
+<ul>
+<li>安装 TronWeb：<code>npm i tronweb</code>；</li>
+<li>Nile 节点：<code>https://nile.trongrid.io</code>（fullHost）；</li>
+<li>水龙头：访问 <a href="https://nileex.io/join/getJoinPage" target="_blank">nileex.io</a> 用测试钱包领水，或在 nileex.io 页面用地址领取；</li>
+<li>浏览器：<code>nile.tronscan.org</code> 查交易/地址/合约。</li>
+</ul>
+<pre><code>// package.json（最小依赖）
+{
+  "name": "tron-wallet-demo",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "dependencies": {
+    "tronweb": "^5.4.0",
+    "bip39": "^3.1.0",
+    "hdkey": "^1.1.1",
+    "ethereumjs-util": "^7.1.5"
+  }
+}
+</code></pre>
+<div class="note"><b>为什么用 bip39 + hdkey 手动派生？</b>教学上我们<em>既会用</em> TronWeb 自带的 <code>fromMnemonic</code>，<em>也会手写</em> BIP44 派生，让你看清“助记词 → 私钥 → 地址”的每一步，避免黑盒。</div>
+
+<h2 id="s11">11. TronWeb 实例化与助记词派生</h2>
+<h3>11.1 直接用 TronWeb 派生</h3>
+<pre><code>// demo1-fromMnemonic.js —— 用 TronWeb 自带方法从助记词派生地址
+const TronWeb = require("tronweb");
+
+const fullHost = "https://nile.trongrid.io";
+const mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"; // 测试助记词，切勿用真金
+
+// TronWeb 5.x 提供 fromMnemonic
+const tronWeb = TronWeb.fromMnemonic(mnemonic, fullHost);
+console.log("地址(base58):", tronWeb.defaultAddress.base58);
+console.log("地址(hex)   :", tronWeb.defaultAddress.hex);
+console.log("私钥        :", tronWeb.defaultPrivateKey);
+</code></pre>
+<h3>11.2 手动按 m/44'/195'/0'/0/0 派生（推荐理解）</h3>
+<p>TRON 的 BIP44 <strong>coin type 是 195</strong>（不是 ETH 的 60）。派生路径：<code>m/44'/195'/0'/0/0</code>。</p>
+<pre><code>// demo2-hd-derive.js —— 手动 BIP44 派生 TRON 地址（m/44'/195'/0'/0/0）
+const TronWeb = require("tronweb");
+const bip39 = require("bip39");
+const HDKey = require("hdkey");
+
+const mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+
+(async () =&gt; {
+  const seed = await bip39.mnemonicToSeed(mnemonic);
+  const root = HDKey.fromMasterSeed(seed);
+  // TRON coin type = 195（注意硬编码单引号表示 hardened）
+  const path = "m/44'/195'/0'/0/0";
+  const child = root.derive(path);
+
+  const privateKey = child.privateKey.toString("hex");
+  // 用私钥构造 TronWeb（自动推出地址）
+  const tronWeb = new TronWeb({
+    fullHost: "https://nile.trongrid.io",
+    privateKey: privateKey,
+  });
+  console.log("派生路径 :", path);
+  console.log("私钥     :", privateKey);
+  console.log("地址hex  :", tronWeb.defaultAddress.hex);
+  console.log("地址base58:", tronWeb.defaultAddress.base58);
+})();
+</code></pre>
+<div class="warn"><b>务必牢记：</b>TRON 路径的 coin type 是 <strong>195</strong>。若用 ETH 的 60，派生出的私钥在 TRON 上也能“算”出地址，但和同一助记词在以太坊生态的钱包（如 MetaMask）不一致，会造成资产错乱。跨链钱包要分别为不同链用各自的 coin type 派生。</div>
+
+<h2 id="s12">12. 地址格式互转代码</h2>
+<p>实战中 TronWeb 自带转换最省事，但把第 4 节的纯实现和 TronWeb 调用都列出来：</p>
+<pre><code>// demo3-address-convert.js
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+
+const hexAddr = "41a6e56f0a3c9c1e2b4d5e6f70819a0b1c2d3e4f50";
+const b58Addr = "TNAS...示例请替换"; // 真实 T 地址
+
+// 内置互转
+const toB58 = tronWeb.address.fromHex(hexAddr);
+const toHex = tronWeb.address.toHex(b58Addr);
+console.log("fromHex -&gt;", toB58);
+console.log("toHex   -&gt;", toHex);
+
+// 校验地址合法性
+console.log("合法?", tronWeb.isAddress(b58Addr));
+
+// 同时把 base58 与 hex 同时用于 RPC（visible 参数）
+// visible=false 时地址是 hex；visible=true 时为 base58
+const tx = await tronWeb.trx.getAccount(hexAddr); // 链上返回 hex 形式
+console.log("账户:", tx);
+</code></pre>
+
+<h2 id="s13">13. TRX 转账完整流程</h2>
+<p>标准三步：<strong>构造交易 → 签名 → 广播 → 轮询确认</strong>。</p>
+<pre><code>// demo4-trx-transfer.js —— TRX 转账完整流程（Nile 测试网）
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({
+  fullHost: "https://nile.trongrid.io",
+  privateKey: "你的私钥（Nile 测试私钥）",
+});
+
+async function transferTrx(toBase58, amountTrx) {
+  const from = tronWeb.defaultAddress.base58;
+  const amountSun = tronWeb.toSun(amountTrx); // TRX -&gt; SUN（1 TRX = 1e6 SUN）
+
+  // 1. 构造交易
+  const tx = await tronWeb.transactionBuilder.sendTrx(toBase58, amountSun, from);
+  // 2. 签名
+  const signedTx = await tronWeb.trx.sign(tx, tronWeb.defaultPrivateKey);
+  // 3. 广播
+  const result = await tronWeb.trx.broadcast(signedTx);
+  if (!result.result) throw new Error("广播失败: " + JSON.stringify(result));
+  console.log("已广播 txID:", result.txid);
+
+  // 4. 轮询确认（最多等约 30 秒，3 秒出块）
+  const confirmed = await waitForConfirmation(result.txid);
+  return confirmed;
+}
+
+async function waitForConfirmation(txID, timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start &lt; timeoutMs) {
+    const tx = await tronWeb.trx.getTransactionInfo(txID);
+    if (tx && tx.receipt &amp;&amp; tx.receipt.result === "SUCCESS") {
+      return { ok: true, txID, block: tx.blockNumber };
+    }
+    if (tx &amp;&amp; tx.receipt &amp;&amp; tx.receipt.result === "FAILED") {
+      return { ok: false, reason: tx.receipt.result };
+    }
+    await new Promise((r) =&gt; setTimeout(r, 3000)); // 每 3 秒查一次
+  }
+  return { ok: false, reason: "timeout（可能已打包但未固化）" };
+}
+
+transferTrx("T接收方地址", 1.5).then(console.log).catch(console.error);
+</code></pre>
+<div class="tip"><b>注意金额单位：</b>TRON 内部最小单位是 <strong>SUN</strong>，1 TRX = 1,000,000 SUN。构造交易务必用 <code>tronWeb.toSun()</code>，否则 1.5 会被当成 1.5 SUN（几乎为 0）。</div>
+
+<h2 id="s14">14. TRC-20（USDT）实战</h2>
+<p>主网 USDT 合约地址：<code>TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy</code>（TRC-20）。Nile 测试网有对应的测试 USDT 合约，可在 Tronscan Nile 上搜索 “USDT” 找到水龙头发行的测试币地址。</p>
+<div class="note"><b>精度：</b>USDT 是 <strong>6 位小数</strong>（不是 ETH 上 USDT 的 6 位，这里一致；但注意有些 TRC-20 是 18 位）。转账时 <code>amount * 10^6</code>。</div>
+<pre><code>// demo5-trc20.js —— TRC-20 (USDT) 余额查询与转账
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({
+  fullHost: "https://nile.trongrid.io",
+  privateKey: "你的Nile私钥",
+});
+
+// 主网 USDT：TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy
+// Nile 测试网 USDT 合约地址以你水龙头页面为准，下面用变量占位
+const USDT_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy";
+const DECIMALS = 6;
+
+async function getUsdtBalance(ownerBase58) {
+  const contract = await tronWeb.contract().at(USDT_CONTRACT);
+  const raw = await contract.balanceOf(ownerBase58).call(); // 只读，免 Energy
+  const balance = Number(raw) / Math.pow(10, DECIMALS);
+  console.log("USDT 余额:", balance);
+  return balance;
+}
+
+async function transferUsdt(toBase58, amount) {
+  const contract = await tronWeb.contract().at(USDT_CONTRACT);
+  const amountSun = Math.floor(amount * Math.pow(10, DECIMALS));
+  // transfer 是写操作，用 .send()，必须给 feeLimit（燃烧 TRX 上限，单位 SUN）
+  const tx = await contract.transfer(toBase58, amountSun).send({
+    feeLimit: tronWeb.toSun(20), // 最多允许燃烧 20 TRX（Energy 不足时）
+  });
+  console.log("USDT 转账 txID:", tx);
+  return tx;
+}
+
+// 用法
+getUsdtBalance("T你的地址").then(() =&gt; transferUsdt("T对方地址", 10));
+</code></pre>
+<div class="warn"><b>feeLimit 必填：</b>合约写操作（<code>.send()</code>）必须显式传 <code>feeLimit</code>，单位为 SUN（1 TRX = 1e6 SUN）。若不传或设太低，交易会直接失败并提示 “feeLimit too low”。建议按业务预估的 Energy 成本上浮设置（如 20~50 TRX），<em>实际只会燃烧真实消耗部分，不会扣满</em>。</div>
+
+<h2 id="s15">15. 交易结果解析</h2>
+<p>广播后，用 <code>getTransactionInfo(txID)</code> 解析真实结果：</p>
+<pre><code>// demo6-receipt.js —— 解析交易回执
+const info = await tronWeb.trx.getTransactionInfo(txID);
+/*
+ info 关键字段：
+ - receipt.result: "SUCCESS" | "FAILED"        // 业务是否成功
+ - receipt.energy_usage / energy_fee          // Energy 消耗与燃烧费用
+ - receipt.bandwidth_usage / bandwidth_fee    // 带宽消耗
+ - contractResult: [""] (空=成功) 或 revert 原因
+ - log: [...]                                 // 合约事件日志（含 Transfer 等）
+ - blockNumber / blockTimeStamp
+*/
+if (info.receipt &amp;&amp; info.receipt.result === "SUCCESS") {
+  console.log("成功！消耗 Energy:", info.receipt.energy_usage,
+              "燃烧 TRX:", info.receipt.energy_fee / 1e6);
+} else {
+  console.log("失败原因:", info.receipt &amp;&amp; info.receipt.result,
+              "contractResult:", info.contractResult);
+}
+</code></pre>
+<div class="tip"><b>区分两层结果：</b>广播返回的 <code>result.result</code> 只表示“交易被网络接受并打包”，<strong>不代表合约逻辑成功</strong>。真正的成败看 <code>getTransactionInfo().receipt.result</code> 与 <code>contractResult</code>。例如 USDT 余额不足时交易会“打包成功但 receipt=FAILED”。</div>
+
+<h2 id="s16">16. 事件监听（TronGrid）</h2>
+<p>链上合约事件（如 Transfer）是钱包“发现入账”的主要手段。生产环境用 <strong>TronGrid 事件 API</strong> 轮询（或用 WebSocket 订阅）。</p>
+<pre><code>// demo7-event-watch.js —— 监听某地址收到的 USDT Transfer 事件
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+
+const USDT_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy";
+const MY_ADDRESS_HEX = tronWeb.address.toHex("T你的地址");
+
+async function pollTransfers(sinceTimestamp) {
+  // 按合约 + 事件名查询历史事件
+  const events = await tronWeb.getEventResult(USDT_CONTRACT, {
+    eventName: "Transfer",
+    since: sinceTimestamp,      // 从该时间戳（毫秒）起
+    size: 50,                   // 每页数量
+    page: 1,
+    orderBy: "block_timestamp,asc",
+  });
+  for (const ev of events) {
+    const to = ev.result.to;     // 接收方（hex）
+    const value = Number(ev.result.value); // 最小单位
+    if (to.toLowerCase() === MY_ADDRESS_HEX.toLowerCase()) {
+      console.log("收到 USDT:", value / 1e6, "txID:", ev.transaction);
+    }
+  }
+  return events.length;
+}
+
+// 每 10 秒轮询一次（生产可改为 Webhook/TronGrid 订阅）
+let lastTs = Date.now() - 60 * 1000;
+setInterval(async () =&gt; {
+  try { lastTs = Date.now() - 60 * 1000; await pollTransfers(lastTs); }
+  catch (e) { console.error("轮询出错", e.message); }
+}, 10000);
+</code></pre>
+<div class="warn"><b>安全点（重点，第 12 篇展开）：</b>事件里的 <code>contract_address</code> 可能是<strong>伪造的假 USDT</strong>。监听时务必<em>只相信白名单内的合约地址</em>（如真正的 USDT 合约），并对 to 字段做精确匹配，否则会误把同名诈骗代币当作真实入账。</div>
+
+<h2 id="s17">17. TronLink 浏览器集成</h2>
+<p>网页钱包与 DApp 通过 <strong>TronLink 浏览器扩展</strong> 交互：检测 <code>window.tronLink</code> / <code>window.tron</code>，请求授权，复用其 TronWeb 实例。</p>
+<pre><code>// 前端 inline script（浏览器内）
+async function connectTronLink() {
+  if (!window.tronLink &amp;&amp; !window.tron) {
+    alert("请先安装 TronLink 浏览器扩展");
+    return null;
+  }
+  const tl = window.tronLink || window.tron;
+  // 请求用户授权（弹出 TronLink 确认框）
+  await tl.request({ method: "tron_requestAccounts" });
+
+  // TronLink 注入的 TronWeb 实例（已含用户地址与签名能力）
+  const tronWeb = tl.tronWeb;
+  const addr = tronWeb.defaultAddress.base58;
+  console.log("已连接 TronLink 地址:", addr);
+  return tronWeb;
+}
+
+// 用 TronLink 签名一段消息（登录/验签场景）
+async function signMessageWithTronLink(tronWeb, msg) {
+  const signed = await tronWeb.trx.sign(tronWeb.toHex(msg)); // 消息转 hex 再签
+  return signed;
+}
+
+// 验签（在后端或前端用地址公钥还原）
+async function verifyTronLink(tronWeb, msg, signed, addressBase58) {
+  const recovered = tronWeb.trx.verifyMessage(tronWeb.toHex(msg), signed, addressBase58);
+  return recovered; // true/false
+}
+</code></pre>
+<div class="tip"><b>体验细节：</b>TronLink 的 <code>tron_requestAccounts</code> 是异步的，必须等用户点“连接”后才有 <code>defaultAddress</code>。<em>不要用</em>过时的 <code>window.tronWeb</code>（旧版全局），应统一用 <code>window.tronLink.tronWeb</code>。</div>
+
+<h2 id="s18">18. 离线签名与广播分离（冷钱包）</h2>
+<p>安全最佳实践：<strong>签名在离线/冷机器完成，广播在联网机器完成</strong>。两机不直接联网交换私钥。</p>
+<pre><code>// 18a-cold-sign.js —— 冷端：仅签名，不联网
+const TronWeb = require("tronweb");
+// 冷端只持有私钥，不配置 fullHost 也不广播
+const cold = new TronWeb({ privateKey: "冷端私钥" });
+
+async function coldSign(rawTx) {
+  // rawTx 由热端构造后（不含签名）通过安全介质传入冷端
+  const signed = await cold.trx.sign(rawTx, cold.defaultPrivateKey);
+  return signed; // 把签名后的交易回传热端广播
+}
+
+// 18b-hot-build.js —— 热端：构造交易
+const hot = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+async function buildTrx(to, amountTrx) {
+  const tx = await hot.transactionBuilder.sendTrx(
+    to, hot.toSun(amountTrx), hot.defaultAddress.base58
+  );
+  return tx; // 传给冷端签名
+}
+
+// 18c-hot-broadcast.js —— 热端：广播冷端签回的交易
+async function broadcast(signedTx) {
+  const ret = await hot.trx.broadcast(signedTx);
+  console.log("广播:", ret);
+}
+</code></pre>
+<div class="note"><b>多签冷签：</b>若账户是多签（第 9 节），冷端可分别对每个 rawTx 用各自私钥 <code>sign(tx, pk, 0xff /* permissionId */)</code> 签名，热端用 <code>broadcast</code> 时 signature 数组里包含多个签名，协议层按权重校验。</div>
+
+<h2 id="s19">19. 常见坑与排查清单</h2>
+<div class="warn"><b>新手必踩的 5 个坑：</b>
+<ol>
+<li><b>feeLimit 设太低</b>：合约交易不传 feeLimit 或传太小，直接失败。解决：send 时带 <code>feeLimit: toSun(20~50)</code>。</li>
+<li><b>新地址未激活</b>：往全新地址打 USDT 失败，因为地址不存在。解决：先转 1 TRX 激活。</li>
+<li><b>Energy 不足烧 TRX 超预期</b>：没质押就调合约，单笔烧 ~3.8 TRX。解决：预质押 TRX 换 Energy，或租 Energy（第 12 篇）。</li>
+<li><b>金额单位错</b>：忘记 <code>toSun</code>/<code>*10^6</code>，把 1.5 TRX 当 1.5 SUN。解决：统一在构造前转换。</li>
+<li><b>地址格式混用</b>：把 T 开头地址直接塞进需要 hex 的 API。解决：用 <code>tronWeb.address.toHex/fromHex</code> 统一。</li>
+</ol></div>
+<table>
+<tr><th>现象</th><th>可能原因</th><th>排查手段</th></tr>
+<tr><td>广播返回 result=false</td><td>参数非法/余额不足/地址未激活</td><td>看 result.message（hex，解码为英文）</td></tr>
+<tr><td>receipt=FAILED 但广播成功</td><td>合约 revert（如余额不足、权限不足）</td><td>查 contractResult、log</td></tr>
+<tr><td>一直 timeout 未确认</td><td>交易被卡（nonce/ref block 过期）</td><td>重查 txID 状态，必要时重发</td></tr>
+<tr><td>Energy 费用远超预期</td><td>未质押/未租 Energy</td><td>查 energy_usage 与 energy_fee</td></tr>
+</table>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 <code>demo2-hd-derive.js</code> 从一段测试助记词派生地址，验证 m/44'/195'/0'/0/0 路径下 base58 与 TronLink/Nile  faucet 页面显示一致。</li>
+<li>在 Nile 领水后，写一段脚本向另一个自己生成的地址转 1 TRX，并轮询拿到 blockNumber。</li>
+<li>查询你在 Nile 的测试 USDT 余额；若水龙头发放了测试 USDT，尝试转 10 个给自己（注意 6 位小数与 feeLimit）。</li>
+<li>用第 4 节的 <code>hexToBase58</code> 把你地址的 hex 转成 T 形式，与 TronWeb 的 <code>fromHex</code> 结果比对，必须完全一致。</li>
+<li>打开 TronLink，写一段前端脚本调用 <code>tron_requestAccounts</code> 并签名一条消息，再用 <code>verifyMessage</code> 验签。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能解释 DPoS 27 超级代表、3 秒出块对钱包体验的影响；</li>
+<li>能手写 hex ↔ base58 地址互转，并说清 0x41 前缀的来历；</li>
+<li>能区分 Bandwidth 与 Energy 的用途、免费额度与质押/燃烧获取方式；</li>
+<li>能估算一笔 TRX 与一笔 USDT 转账的成本，并解释为何“资源充足时近乎免费”；</li>
+<li>能写出 TRX 转账的 构造→签名→广播→轮询 完整代码；</li>
+<li>能正确处理 TRC-20 的 6 位小数与 feeLimit；</li>
+<li>能说清 txID 计算方式、1 确认与固化的区别；</li>
+<li>理解 TRON 协议层多签（owner/active、阈值、权重），以及它和以太坊合约多签的差异；</li>
+<li>能集成 TronLink 并完成签名/验签；</li>
+<li>能描述离线签名 + 广播分离的流程，并避开 5 个常见坑。</li>
+</ul></div>
+
+<div class="pager"><a href="09-sol-defi.html"><b>上一篇</b>← Solidity DeFi 应用</a><a class="next" href="11-tron-tvm.html"><b>下一篇</b>TRON 篇 II：TVM 合约开发与部署 →</a></div>
+</main></body></html>

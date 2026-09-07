@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUI 篇 III：DeFi 与生态实战</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html" class="cur">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">SUI 篇 III：DeFi 与生态实战</span><span class="chain chain-sui">SUI</span></header>
+<main class="doc">
+<h1>SUI 篇 III：DeFi 与生态实战</h1><p class="subtitle">在 Sui 上接入主流 DeFi 协议：Cetus、DeepBook、借贷与流动性质押，并掌握 GraphQL 索引与 gas 赞助。主要参考：各协议官方文档、Sui 官方 Onchain Finance 指南。</p>
+<div class="goals"><b>本章目标：</b>
+<ul style="margin-top:8px">
+<li>建立 Sui DeFi 生态地图，对照 ETH/SOL 理解对象模型带来的差异。</li>
+<li>用 Cetus CLMM SDK 完成查池、算路由、构建 PTB 执行 swap 与滑点保护。</li>
+<li>用 DeepBook V3 客户端读盘口、理解 BalanceManager 与下限价单流程。</li>
+<li>了解 Scallop 借贷与 LST（haSUI）质押的交互方式。</li>
+<li>掌握 Sui GraphQL RPC 查询、事件监听与 gas 赞助交易代码框架。</li>
+</ul></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. Sui DeFi 生态地图</a>
+<a href="#s2">2. Cetus 实战（CLMM DEX）</a>
+<a href="#s3">3. DeepBook 实战（链上 CLOB）</a>
+<a href="#s4">4. 借贷与流动性质押 LST</a>
+<a href="#s5">5. 基础设施：GraphQL 与索引</a>
+<a href="#s6">6. Gas 赞助交易实战</a>
+<a href="#s7">7. 组合策略：单 PTB 串起多协议</a>
+<a href="#s8">8. DeFi 风控与常见陷阱</a>
+<a href="#s9">9. 跨链资产进出（Wormhole 流程）</a>
+<a href="#s10">10. 实战框架：行情监控与再平衡</a>
+<a href="#s11">11. 周边生态：SuiNS / Walrus / Seal</a>
+<a href="#s12">12. 术语速查表</a>
+<a href="#s13">13. DeFi 常见问题排查</a>
+<a href="#s14">14. 延伸阅读与参考资料</a>
+<a href="#s15">15. 端到端示例：钱包 → 合约 → DeFi 串起来</a>
+</div>
+
+<h2 id="s1">1. Sui DeFi 生态地图</h2>
+<p>本章是 SUI 三篇的收尾，也是「动手能用」的落脚点。前两篇你已经会连链（I）和写合约（II），本篇把它们接入真实协议：从 DEX 兑换、链上订单簿、借贷生息，到流动性质押与跨链。读完你应当能独立写出一个「钱包 + 自写合约 + 接生态协议」的最小 dApp。</p>
+<p>Sui 的 DeFi 栈围绕「对象模型」展开，许多协议把 LP 头寸、订单、资产都表达为对象，从而天然并行、可组合。</p>
+<div class="grid c3">
+<div class="card"><h4>DeepBook</h4><p>官方原生链上中央限价订单簿（CLOB），V3 引入 DEEP 代币做激励与治理。撮合在共享池对象上完成。</p></div>
+<div class="card"><h4>Cetus</h4><p>生态最大 CLMM（集中流动性）DEX，类似 ETH 上的 Uniswap V3，LP 头寸是对象。</p></div>
+<div class="card"><h4>Bluefin</h4><p>去中心化衍生品/永续合约交易所，订单撮合高速。</p></div>
+<div class="card"><h4>Scallop / Suilend / NAVI</h4><p>主流借贷协议，存币生息、借款，对照 Aave/Compound。</p></div>
+<div class="card"><h4>Haedal / Aftermath / Volo</h4><p>流动性质押（LST）：质押 SUI 得 haSUI / afSUI / vSUI，可继续在 DeFi 中使用。</p></div>
+<div class="card"><h4>SuiNS / Walrus / Seal</h4><p>SuiNS 域名；Walrus 去中心化存储、Seal 加密，合称「Sui Stack」。</p></div>
+</div>
+
+<h3>1.1 资产与跨链</h3>
+<ul>
+<li><b>原生 USDC</b>：Circle 在 Sui 上发行的原生 USDC（非桥接包装），地址以 <code>0xdba...</code> 开头的官方包。</li>
+<li><b>跨链</b>：通过 <b>Wormhole</b> 等桥把 ETH/SOL 等资产跨到 Sui，得到包装资产（如 wETH），再参与本地 DeFi。</li>
+<li>原生代币 <code>0x2::sui::SUI</code> 是几乎所有池子的基础计价资产。</li>
+</ul>
+
+<h3>1.2 与 ETH / SOL DeFi 模式对照</h3>
+<table>
+<tr><th>维度</th><th>Ethereum DeFi</th><th>Solana DeFi</th><th>Sui DeFi</th></tr>
+<tr><td>撮合范式</td><td>AMM 为主</td><td>AMM + Serum CLOB</td><td><b>CLMM + 原生 CLOB（DeepBook）</b>并行</td></tr>
+<tr><td>LP 头寸</td><td>ERC-721 / 数字份额</td><td>账户</td><td><b>对象（可拆分转移）</b></td></tr>
+<tr><td>并行撮合</td><td>串行（单 AMM 内）</td><td>账户级并行</td><td>对象级并行</td></tr>
+<tr><td>组合方式</td><td>多笔 approve+调用</td><td>CPI 组合</td><td><b>单 PTB 原子编排</b></td></tr>
+</table>
+<div class="tip"><b>核心差异：</b>在 Sui 上，一个「在 Cetus 用 USDC 换 SUI、再去 Scallop 存 SUI 生息」的流程可写成<b>单个 PTB</b>，原子完成，无需中间授权。</div>
+
+<h2 id="s2">2. Cetus 实战（CLMM DEX）</h2>
+<p>Cetus 提供官方 TS SDK <code>@cetusprotocol/cetus-sui-clmm-sdk</code>。下面演示「查池 → 估算 swap → 构建 PTB 执行」。</p>
+<h3>2.1 初始化 SDK 与查池</h3>
+<pre><code>import { CetusClmmSDK } from "@cetusprotocol/cetus-sui-clmm-sdk";
+import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+
+const client = new SuiClient({ url: getFullnodeUrl("mainnet") }); // 实盘用 mainnet
+const sdk = CetusClmmSDK.createSDK({ env: "mainnet" });
+sdk.senderAddress = "0x你的地址";
+
+// 查一个交易对池（SUI/USDC 的 pool ID，可从 Cetus 文档/API 获取）
+const poolId = "0x池对象ID";
+const pool = await sdk.Pool.getPool(poolId);
+console.log("当前价格:", pool.current_sqrt_price, "手续费档:", pool.fee_rate);</code></pre>
+
+<h3>2.2 估算 swap 路由与输出</h3>
+<pre><code>// 用 preswap 估算：用 1 SUI 换 USDC 能得多少
+const preswap = await sdk.Swap.preswap({
+  pool,                       // 上面查到的池
+  currentSqrtPrice: pool.current_sqrt_price,
+  coinTypeA: "0x2::sui::SUI",
+  coinTypeB: "0xdba...::usdc::USDC", // 原生 USDC 类型标签
+  decimalsA: 9,
+  decimalsB: 6,
+  amount: 1_000_000_000,      // 1 SUI（MIST）
+  byAmountIn: true,           // 指按「输入量」估算输出
+  direction: "a2b",           // 从 A(SUI) 换到 B(USDC)
+});
+console.log("预计得到 USDC(最小单位):", preswap.estimatedAmountOut);
+console.log("价格冲击:", preswap.estimatedFeeAmount);</code></pre>
+
+<h3>2.3 构建 PTB 执行 swap（含滑点）</h3>
+<pre><code>// 设 0.5% 滑点保护：实际得到不得低于预估 * (1 - 0.005)
+const slippage = 0.005;
+const minOut = BigInt(
+  Math.floor(Number(preswap.estimatedAmountOut) * (1 - slippage))
+);
+
+const tx = sdk.Swap.createSwapTransactionPayload({
+  pool,
+  coinTypeA: "0x2::sui::SUI",
+  coinTypeB: "0xdba...::usdc::USDC",
+  amountIn: 1_000_000_000,
+  amountOutMin: minOut,        // 滑点下限，链上会 assert
+  byAmountIn: true,
+  direction: "a2b",
+  // 用户的 SUI 来源（gas 或指定 Coin 对象）
+  txb: new Transaction(),
+});
+
+// 用钱包/密钥签名并执行
+const result = await sdk.fullClient.signAndExecuteTransaction({
+  transaction: tx,
+  signer: keypair,            // 或 dapp-kit 的 useSignAndExecuteTransaction
+  options: { showEffects: true },
+});
+await client.waitForTransaction({ digest: result.digest });
+console.log("兑换完成:", result.digest);</code></pre>
+<div class="warn"><b>滑点必须设：</b>链上 MEV/价格变动可能让你「换得更少」。务必传 <code>amountOutMin</code>，否则可能被夹。聚合器（如 7k、Hop）会在多个池间寻优，用法类似，只是多了路由选择层。</div>
+
+<h3>2.4 添加/移除流动性（LP 对象）</h3>
+<pre><code>// 在价格区间 [lower, upper] 内存流动性，得到一个 LP 头寸对象
+const addTx = sdk.Position.createAddLiquidityTransactionPayload({
+  pool,
+  coinTypeA: "0x2::sui::SUI",
+  coinTypeB: "0xdba...::usdc::USDC",
+  lowerTick: pool.current_tick - 100,
+  upperTick: pool.current_tick + 100,
+  amountA: 1_000_000_000,     // 想存 SUI 量
+  amountB: 0,                 // 由 SDK 自动算另一个方向
+  fix_amount_a: true,
+  txb: new Transaction(),
+});
+await sdk.fullClient.signAndExecuteTransaction({ transaction: addTx, signer: keypair });
+// 返回的 objectChanges 里会有一个新的 Position 对象（LP 头寸，可转移/拆分）</code></pre>
+<div class="tip"><b>对象化 LP：</b>每个 LP 头寸是一个独立对象，你可以把它转给朋友、抵押到借贷协议、甚至拆成更细的区间——这是 Sui CLMM 相比 EVM 的灵活之处。</div>
+
+<h3>2.6 聚合器与路由（7k / Hop 简述）</h3>
+<p>当单池滑点较大时，可用<b>聚合器</b>在多个池（Cetus 各区间 + DeepBook）间寻最优路径。以社区聚合器（如 7k、Hop）为例，它们对外暴露「给输入币+数量 → 返回最优路由 PTB」的接口。</p>
+<pre><code>// 以典型聚合器调用形态示意（具体包/方法名以其文档为准）
+import { AggregatorClient } from "@7kprotocol/sui-agent-kit"; // 示意
+
+const agg = new AggregatorClient({ client, env: "mainnet" });
+
+// 请求路由：用 1 SUI 换 USDC，让聚合器选最优路径
+const route = await agg.findRoutes({
+  coinTypeFrom: "0x2::sui::SUI",
+  coinTypeTo: "0xdba...::usdc::USDC",
+  amountIn: 1_000_000_000,
+  byAmountIn: true,
+});
+
+// 聚合器返回可直接执行的 PTB（内部已拼好多跳 moveCall）
+const tx = route.buildTransaction({ sender: "0x你的地址", slippage: 0.005 });
+await client.signAndExecuteTransaction({ transaction: tx, signer: keypair });
+console.log("聚合路由成交，路径:", route.path);</code></pre>
+<div class="tip"><b>选 Cetus 还是聚合器：</b>小额、单池深度够 → 直接用 Cetus SDK 更简单；大额、跨多池寻优 → 用聚合器省滑点。两者底层都是 PTB，可互相替换调用层。</div>
+
+<h2 id="s3">3. DeepBook 实战（链上 CLOB）</h2>
+<p>DeepBook 是 Sui 原生的<b>链上中央限价订单簿</b>。订单撮合发生在共享池对象上，价格发现比 AMM 更精确，适合大额与做市。</p>
+<h3>3.1 初始化客户端与读盘口</h3>
+<pre><code>import { DeepBookClient } from "@mysten/deepbook-v3";
+
+const dbClient = new DeepBookClient(client); // 传入 SuiClient
+const poolId = "0xDeepBook池ID";
+
+// 取中间价（mid price）
+const mid = await dbClient.getMidPrice(poolId);
+console.log("中间价:", mid);
+
+// 取 Level2 盘口（买卖各 N 档）
+const asks = await dbClient.getLevel2(poolId, false); // false = asks(卖)
+const bids = await dbClient.getLevel2(poolId, true);  // true  = bids(买)
+console.log("卖一档:", asks[0]);
+console.log("买一档:", bids[0]);</code></pre>
+
+<h3>3.2 BalanceManager：撮合前的「余额账户」</h3>
+<p>DeepBook 撮合不立即动用你的 Coin 对象，而是让你先把币<b>存入一个 BalanceManager（共享对象）</b>，撮合在账本内记账，成交后再结算。这样避免了每笔订单都搬动对象，提升吞吐。</p>
+<pre><code>// 1) 创建 BalanceManager（首次使用需建一个，归你所有）
+const createBM = dbClient.createBalanceManager({
+  // 一般需传入一个 owner 与可选 name
+});
+await client.signAndExecuteTransaction({ transaction: createBM, signer: keypair });
+
+// 2) 把 SUI 存入 BalanceManager（充值）
+const depositTx = dbClient.depositIntoManager(
+  managerId,                 // BalanceManager 对象 ID
+  "0x2::sui::SUI",
+  amountInMist
+);
+await client.signAndExecuteTransaction({ transaction: depositTx, signer: keypair });</code></pre>
+
+<h3>3.3 下限限价单</h3>
+<pre><code>// 在池上下一个「买 X 个 SUI，价格 ≤ P」的限价单
+const orderTx = dbClient.placeLimitOrder({
+  poolId,
+  managerId,                 // 你的 BalanceManager
+  clientOrderId: 1,          // 自定订单号（用于撤单）
+  isBid: true,               // true=买, false=卖
+  price: 1_000_000,          // 价格（按池的 tick/精度）
+  quantity: 10,              // 数量
+  // 可选：expireTimestamp 过期时间、selfMatching 策略
+});
+const res = await client.signAndExecuteTransaction({ transaction: orderTx, signer: keypair });
+console.log("下单 digest:", res.digest);
+
+// 撤单：用 clientOrderId 指定
+const cancelTx = dbClient.cancelOrder({ poolId, managerId, clientOrderId: 1 });
+await client.signAndExecuteTransaction({ transaction: cancelTx, signer: keypair });</code></pre>
+<div class="note"><b>DeepBook vs Cetus 怎么选：</b>需要精确价格/大额撮合/做市 → DeepBook；需要「一键换币、流动性挖矿」→ Cetus。很多聚合器会同时路由两者。</div>
+
+<h2 id="s4">4. 借贷与流动性质押 LST</h2>
+<h3>4.1 借贷：Scallop SDK 存借款框架</h3>
+<pre><code>import { Scallop } from "@scallop-io/sui-scallop-sdk";
+
+const scallop = new Scallop({
+  client,
+  // 可指定 network: "mainnet" / "testnet"
+});
+
+// ① 存入 SUI 生息：得到一个存款凭证对象
+const depositTx = scallop.createDepositSuiTx({
+  amount: 10_000_000_000,    // 10 SUI
+  // sender 等由 SDK 从 client 推断
+});
+await client.signAndExecuteTransaction({ transaction: depositTx, signer: keypair });
+
+// ② 借款：以存入的 SUI 为抵押，借出 USDC（需先开启市场/健康因子足够）
+const borrowTx = scallop.createBorrowTx({
+  coinType: "0xdba...::usdc::USDC",
+  amount: 5_000_000,         // 5 USDC（6 位精度）
+});
+await client.signAndExecuteTransaction({ transaction: borrowTx, signer: keypair });
+
+// ③ 还款与提取：createRepayTx / createWithdrawTx，方向相反
+console.log("提示：借款前务必确认健康因子 &gt; 1，避免清算");</code></pre>
+<div class="tip"><b>借贷三协议对照：</b>Scallop、Suilend、NAVI 接口类似，都是「存币得 aToken 类凭证、按抵押率借款」。开发时可先选一个对接，再按包 ID 切换。</div>
+
+<h3>4.2 流动性质押 LST：质押 SUI 得 haSUI</h3>
+<p>把 SUI 质押给 Haedal（或其他 LST 协议），你得到 <code>haSUI</code> 对象：它随质押奖励增值，且可继续拿去 Cetus/Scallop 做二次生息。</p>
+<pre><code>// 以 Haedal 为例（示意，具体 SDK 以官方为准）
+import { HaedalClient } from "@haedal-protocol/haedal-sdk"; // 示意包名
+
+const haedal = new HaedalClient({ client, packageId: "0xHaedal包ID" });
+
+// 质押 10 SUI → 得到 haSUI
+const stakeTx = haedal.buildStakeTx({
+  suiAddress: "0x你的地址",
+  amount: 10_000_000_000,    // 10 SUI
+});
+const res = await client.signAndExecuteTransaction({ transaction: stakeTx, signer: keypair });
+await client.waitForTransaction({ digest: res.digest });
+
+// 查询你持有的 haSUI 余额（haSUI 是 Coin&lt;HA_SUI&gt; 标准币）
+const haSuiBal = await client.getBalance({
+  owner: "0x你的地址",
+  coinType: "0xHaedal包::haedal::HA_SUI",
+});
+console.log("haSUI 余额:", haSuiBal.totalBalance);
+
+// 解质押（需经过解锁期）：buildUnstakeTx + 后续领取
+const unstakeTx = haedal.buildUnstakeTx({ haSuiAmount: 10_000_000_000 });
+await client.signAndExecuteTransaction({ transaction: unstakeTx, signer: keypair });</code></pre>
+<div class="note"><b>组合玩法：</b>SUI → 质押得 haSUI → 在 Cetus 提供 haSUI/USDC 流动性 → 把 LP 对象存 Scallop 借款。全部可以是组合动作，体现 Sui 对象化带来的可组合性。</div>
+
+<h3>4.4 LST 三协议对照</h3>
+<table>
+<tr><th>协议</th><th>代币</th><th>特点</th></tr>
+<tr><td>Haedal</td><td>haSUI</td><td>生态最早 LST 之一，集成广，支持委托验证者</td></tr>
+<tr><td>Aftermath</td><td>afSUI</td><td>由 Aftermath DEX 团队，常配其一体化界面</td></tr>
+<tr><td>Volo</td><td>vSUI</td><td>老牌流动性质押，社区基础厚</td></tr>
+</table>
+<div class="tip"><b>选哪个：</b>三者都「1 SUI 质押 ≈ 1 LST」，差异在收益率、集成广度与是否在目标 DeFi 协议被接受。开发时优先接「你目标池子支持」的那个 LST，减少兑换摩擦。</div>
+
+<h2 id="s5">5. 基础设施：GraphQL 与索引</h2>
+<h3>5.1 Sui GraphQL RPC 查询实战</h3>
+<p>新版 Sui 主网/测试网都暴露 GraphQL 端点，一次请求可取「交易 + 对象 + 事件」关联数据。</p>
+<pre><code>const GQL = "https://sui-mainnet.mystenlabs.com/graphql"; // 主网；测试网换 sui-testnet
+
+// 查某地址最近 5 笔交易的 digest 与状态
+const q1 = `
+  query ($addr: SuiAddress!) {
+    address(address: $addr) {
+      transactions(last: 5) {
+        nodes {
+          digest
+          timestamp
+          effects { status { status } }
+        }
+      }
+    }
+  }
+`;
+const r1 = await fetch(GQL, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ query: q1, variables: { addr: "0x你的地址" } }),
+}).then((x) =&gt; x.json());
+console.log(r1.data.address.transactions.nodes);
+
+// 查某对象当前字段（替代 getObject）
+const q2 = `
+  query ($id: SuiObjectId!) {
+    object(address: $id) {
+      asMoveObject { contents }
+      owner { ... on AddressOwner { owner { address } } }
+    }
+  }
+`;
+const r2 = await fetch(GQL, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ query: q2, variables: { id: "0x对象ID" } }),
+}).then((x) =&gt; x.json());
+console.log(r2.data.object);</code></pre>
+
+<h3>5.2 Sui Explorer 使用</h3>
+<ul>
+<li>主网浏览器：<code>https://suiscan.xyz</code> / 官方 <code>https://explorer.sui.io</code>。</li>
+<li>查交易：粘贴 digest 看 effects、objectChanges、events。</li>
+<li>查对象：粘贴 objectId 看类型、owner、版本、内容字段——调试合约的必备工具。</li>
+<li>查事件：按 package / 模块 / 事件类型过滤，验证你的 emit 是否生效。</li>
+</ul>
+
+<h3>5.3 事件监听：queryEvents 轮询 + checkpoint 订阅</h3>
+<pre><code>// 方式 A：queryEvents 轮询（适合低频、简单场景）
+async function pollEvents(lastCursor: string | null | undefined) {
+  const page = await client.queryEvents({
+    query: { MoveEventType: "0x包::market::ListingCreated" }, // 你的事件全名
+    cursor: lastCursor,
+    limit: 50,
+    order: "ascending",
+  });
+  for (const e of page.data) {
+    console.log("新挂单:", e.parsedJson, "交易:", e.transactionDigest);
+  }
+  if (page.hasNextPage) await pollEvents(page.nextCursor);
+}
+pollEvents(null);
+
+// 方式 B：基于 WebSocket 的 checkpoint 订阅（生产更稳、近实时）
+// 用 @mysten/sui 的 websocketClient 或自建索引器订阅 checkpoint 流，
+// 对每个 checkpoint 内的交易解析其 events，再入库。</code></pre>
+<div class="tip"><b>自建索引器：</b>高频 dApp（如行情面板、通知）应跑一个后台服务，订阅 checkpoint → 解析 events/objectChanges → 写进 Postgres，前端只查数据库，避免每次打全节点。</div>
+
+<h3>5.4 GraphQL 进阶：事件与对象联查</h3>
+<p>GraphQL 的优势是一次取「关联数据」。下面示例：查某包最近发出的事件，并顺带带出对应交易的状态。</p>
+<pre><code>const q = `
+  query ($pkg: SuiAddress!) {
+    events(filter: { package: $pkg }, last: 10) {
+      nodes {
+        sender { address }
+        type { name module package }
+        timestamp
+        transaction { effects { status { status } } }
+      }
+    }
+  }
+`;
+const r = await fetch(GQL, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ query: q, variables: { pkg: "0x你的包ID" } }),
+}).then((x) =&gt; x.json());
+for (const e of r.data.events.nodes) {
+  console.log(e.type.module, e.type.name, "来自", e.sender.address, "状态", e.transaction.effects.status.status);
+}</code></pre>
+<div class="tip"><b>为什么用 GraphQL 而非 JSON-RPC：</b>JSON-RPC 一次只能取一种资源，联表要多次往返；GraphQL 一次描述「要什么」即可，省带宽、易维护，是生产索引器的首选入口。</div>
+
+<h2 id="s6">6. Gas 赞助交易实战</h2>
+<p>回到第 I 篇的赞助交易：让第三方（你的后端/补贴方）代付 gas，用户无 SUI 也能用 dApp。下面是代码框架（基于 Sui 的「两段式签名」）。</p>
+<h3>6.1 流程与代码框架</h3>
+<pre><code>import { Transaction } from "@mysten/sui/transactions";
+import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+
+const client = new SuiClient({ url: getFullnodeUrl("testnet") });
+
+// ① 用户构造交易，声明「由赞助者付 gas」
+const tx = new Transaction();
+tx.setSender(userAddress);                  // 交易真正的作用方（用户）
+// ... 填充业务：tx.moveCall / splitCoins 等 ...
+
+// ② 用户先对「交易意图」签名（不付 gas）
+const userSig = await userKeypair.signTransaction(tx); // 用户侧签名
+
+// ③ 赞助者指定 gas 来源与预算，并对 gas 数据签名
+const sponsorAddress = sponsorKeypair.getPublicKey().toSuiAddress();
+tx.setGasOwner(sponsorAddress);
+tx.setGasPayment(await pickSponsorCoins(client, sponsorAddress)); // 赞助者的 Coin 对象
+tx.setGasBudget(50_000_000);
+
+// 赞助者对 gasData 签名的封装（示意：实际用 SponsoredTxData 结构）
+const sponsorSig = await sponsorKeypair.signTransaction(tx); // 垫付 gas 的签名
+
+// ④ 组装并提交：两个签名一起发
+const result = await client.executeTransactionBlock({
+  transactionBlock: tx,
+  signature: [userSig.signature, sponsorSig.signature],
+  options: { showEffects: true },
+});
+await client.waitForTransaction({ digest: result.digest });
+console.log("赞助交易完成:", result.digest);
+
+// 辅助：从赞助者地址挑出足够大的 SUI Coin 作为 gas payment
+async function pickSponsorCoins(client: SuiClient, owner: string) {
+  const coins = await client.getCoins({ owner, coinType: "0x2::sui::SUI" });
+  return coins.data.slice(0, 1).map((c) =&gt; ({
+    objectId: c.coinObjectId,
+    version: c.version,
+    digest: c.digest,
+  }));
+}</code></pre>
+<div class="warn"><b>赞助者安全：</b>只为你「自己构造并校验过」的交易代付；绝不能直接把签名能力暴露给不可信前端，否则可能被构造天价 gas 交易掏空赞助账户。</div>
+<div class="note"><b>更省事的做法：</b>生产环境可用官方/第三方「赞助服务」（如 Sui 的 gas station 模式），dApp 后端只需在风控通过后转发交易，由服务统一代付与结算。</div>
+
+<h3>6.2 把赞助交易接进 dapp-kit</h3>
+<p>dapp-kit 的 <code>useSignAndExecuteTransaction</code> 支持传入自定义「执行器」：你可以把上面「用户签名 → 发后端赞助服务 → 后端代付 gas 提交」封装成一个 <code>execute</code> 回调，UI 侧代码几乎不变。</p>
+<pre><code>// 伪代码：在 Provider 层注入赞助执行器
+function sponsoredExecute({ transaction }: { transaction: Transaction }) {
+  // 1) 让钱包对交易意图签名（前端）
+  // 2) 把签名 + 交易字节 POST 到你的赞助后端
+  // 3) 后端校验、代付 gas、提交、返回 digest
+  return fetch("/api/sponsor", {
+    method: "POST",
+    body: JSON.stringify({ txBytes: transaction.serialize() }),
+  }).then((r) =&gt; r.json());
+}
+// 之后 useSignAndExecuteTransaction({ execute: sponsoredExecute })</code></pre>
+
+<h3>2.5 解析 swap 结果与价格影响</h3>
+<p>swap 执行后，从 <code>objectChanges</code> 里可以确认用户到底拿到了多少目标币、花了多少源币：</p>
+<pre><code>const res = await client.signAndExecuteTransaction({ transaction: swapTx, signer: keypair });
+await client.waitForTransaction({ digest: res.digest, options: { showObjectChanges: true } });
+
+// 遍历对象变化，找出「流向用户的新 Coin 对象」
+for (const ch of res.objectChanges ?? []) {
+  if (ch.type === "created" || ch.type === "mutated") {
+    const owner = (ch as any).owner;
+    if (owner?.AddressOwner === "0x你的地址") {
+      console.log("用户得到对象:", ch.objectType, ch.objectId);
+    }
+  }
+}
+
+// 价格影响（price impact）核算：用真实收到量反推成交价，和 preswap 预估对比
+const realizedOut = /* 从 objectChanges 取到实际数量 */ 0n;
+const impact = 1 - Number(realizedOut) / Number(preswap.estimatedAmountOut);
+if (impact &gt; 0.01) console.warn("价格冲击超过 1%，注意滑点与池子深度");</code></pre>
+<div class="tip"><b>为什么看 objectChanges：</b>swap 会销毁旧的 Coin、铸造新的 Coin，链上只有对象变化记录，没有「返回值」。所有「我得到了多少」都从对象的 owner 与数量反推。</div>
+
+<h3>3.4 DeepBook 撮合结算与事件</h3>
+<p>DeepBook 下单后撮合在账本内记账，成交会通过事件通知，结算时才真正搬动 BalanceManager 里的余额：</p>
+<pre><code>// 监听成交事件（事件类型来自 DeepBook 包，以下为示意全名）
+const fills = await client.queryEvents({
+  query: {
+    MoveEventType: "0xdeepbook...::order_book::OrderFilled",
+  },
+  limit: 20,
+  order: "descending",
+});
+for (const f of fills.data) {
+  console.log("成交:", f.parsedJson); // { price, quantity, taker, maker, ... }
+}
+
+// 从 BalanceManager 提取成交后余额（结算）
+const settleTx = dbClient.settleToManager(managerId, "0x2::sui::SUI");
+await client.signAndExecuteTransaction({ transaction: settleTx, signer: keypair });</code></pre>
+<div class="note"><b>记账 vs 结算：</b>DeepBook 的「先记账、后结算」让高频做市者不必每笔都搬对象，是对象模型 + 共享池对象配合出来的高性能设计。</div>
+
+<h3>4.3 健康因子与清算机制</h3>
+<p>借贷协议用<b>健康因子（Health Factor, HF）</b>衡量安全度：</p>
+<pre><code>// 健康因子公式（概念，各协议系数略有差异）
+// HF = (存入价值 × 清算阈值) / 借出价值
+// HF &gt; 1 ：安全；HF 逼近 1 ：预警；HF &lt; 1 ：被清算
+
+// 示例：存 10 SUI（≈ 10 单位），清算阈值 0.8；借 5 USDC
+// HF = 10 × 0.8 / 5 = 1.6  →  安全
+// 若 SUI 跌到使存入价值变 6：HF = 6 × 0.8 / 5 = 0.96 &lt; 1 → 触发清算</code></pre>
+<table>
+<tr><th>健康因子</th><th>状态</th><th>应对</th></tr>
+<tr><td>HF &gt; 1.5</td><td>安全</td><td>可继续借或加杠杆</td></tr>
+<tr><td>1 &lt; HF ≤ 1.5</td><td>注意</td><td>考虑还款/追加抵押</td></tr>
+<tr><td>HF &lt; 1</td><td>清算中</td><td>清算人可折价拿走抵押，偿还债务</td></tr>
+</table>
+<div class="warn"><b>风险提示：</b>借贷 + 杠杆在行情剧烈波动时可能被清算并损失抵押。教学可用 testnet 模拟，实盘务必留足缓冲。</div>
+
+<h3>6.3 赞助交易的限额与风控策略</h3>
+<p>赞助者不能无限制代付，生产上要设护栏：</p>
+<ul>
+<li><b>白名单：</b>只为你自己后端构造的交易代付，拒绝任意前端传来的交易字节。</li>
+<li><b>预算上限：</b>单笔 gasBudget 设上限（如 0.1 SUI），防止天价 gas 耗尽资金。</li>
+<li><b>频率/额度：</b>按用户地址限流与限日额度，防刷。</li>
+<li><b>内容校验：</b>代付前用 <code>dryRun</code> 确认交易只做预期动作、对象变更符合预期。</li>
+<li><b>对账：</b>记录每笔赞助 digest 与花费，定期核对余额。</li>
+</ul>
+<div class="warn"><b>最高原则：</b>赞助服务暴露的「签名能力」等于钱。任何「前端传交易、后端直接签」的裸实现，都可能被构造恶意交易掏空赞助账户。务必走「后端构造 + 风控校验 + 再签名」的闭环。</div>
+
+<h2 id="s7">7. 组合策略：单 PTB 串起多协议</h2>
+<p>这是 Sui DeFi 最值得掌握的能力：把「不同协议的调用」编排进<b>同一个 PTB</b>，原子完成。下面用「Cetus 把 SUI 换成 USDC → 立刻存进 Scallop 生息」演示思路。</p>
+<pre><code>// 注意：跨 SDK 的 PTB 协调需要你手动拼命令；这里用裸 Transaction 表达「意图」
+const tx = new Transaction();
+
+// 步骤 1：在 Cetus 池把 SUI 换成 USDC（得到一个 Coin&lt;USDC&gt; 引用）
+// 实际中 Cetus SDK 的 createSwapTransactionPayload 会往 tx 里加 moveCall；
+// 这里我们假定它返回换得的 USDC Coin 引用 usdcCoin
+const usdcCoin = cetusSwapInto(tx, poolId, suiAmount); // 伪函数：向 tx 注入 swap 命令
+
+// 步骤 2：把换得的 USDC 直接存进 Scallop（同一个 tx，无需先转回自己）
+scallop.depositCoinInto(tx, usdcCoin, "0xdba...::usdc::USDC"); // 伪函数
+
+// 步骤 3：一次性签名执行
+const res = await client.signAndExecuteTransaction({ transaction: tx, signer: keypair });
+await client.waitForTransaction({ digest: res.digest });
+// 结果：用户既没暴露中间 USDC、也没做多余授权；一步完成「兑换+存款」</code></pre>
+<div class="quote"><b>组合性的本质：</b>在 EVM 上你要「approve Cetus → swap → approve Scallop → deposit」至少四笔且留授权；在 Sui 上只是一个 PTB，且 Coin 对象直接在协议间流转，没有「授权残留」风险。</div>
+<div class="tip"><b>实操建议：</b>多数协议 SDK 默认返回完整 <code>Transaction</code>。要组合时，把第一个 SDK 的 tx 作为「容器」，再手动 <code>tx.moveCall</code> 追加第二个协议的调用，复用前一个命令的输出引用即可。</div>
+
+<h2 id="s8">8. DeFi 风控与常见陷阱</h2>
+<table>
+<tr><th>风险</th><th>说明</th><th>防御</th></tr>
+<tr><td>滑点被夹</td><td>链上价格变动致成交更差</td><td>始终传 <code>amountOutMin</code>，用聚合器寻优</td></tr>
+<tr><td>合约漏洞</td><td>Move 模块逻辑缺陷/权限错配</td><td>只用已审计主流协议，核对包 ID</td></tr>
+<tr><td>清算</td><td>抵押不足被强平</td><td>保持 HF &gt; 1.5，设监控告警</td></tr>
+<tr><td>假代币</td><td>伪造的 USDC/Coin 类型</td><td>核对官方 coinType 全名，不从未知地址收币</td></tr>
+<tr><td>钓鱼授权</td><td>恶意 dApp 诱导签名</td><td>钱包层展示交易明细，用户确认对象/金额</td></tr>
+</table>
+<div class="warn"><b>地址核对铁律：</b>Sui 上「USDC」是 <code>0xdba...::usdc::USDC</code> 这个确切类型标签。任何拼写不同（多一个 0、换了前缀）的「USDC」都是假币。UI 一定要展示完整 coinType 供用户核对。</div>
+<div class="note"><b>测试网演练：</b>所有高风险操作（杠杆、清算、组合策略）先在 testnet 用水龙头资金跑通，再考虑主网小额验证。DeFi 没有「撤销」按钮。</div>
+
+<h2 id="s9">9. 跨链资产进出（Wormhole 流程）</h2>
+<p>要把 ETH/SOL 上的资产带到 Sui 参与 DeFi，通常走跨链桥。以 <b>Wormhole</b> 为例，核心是把源链的币「锁定/销毁」，在目标链「铸造等额包装资产」。</p>
+<pre><code>// 概念流程（非逐行可跑代码，具体以 Wormhole/Sui 桥文档为准）
+// ① 在源链（如 ETH）把 USDC 锁进 Wormhole Token Bridge，得到 transfer VAA
+// ② 把 VAA 提交到 Sui 上的 Wormhole 合约，铸造 wrapped USDC（wUSDC）
+// ③ 在 Sui 上把 wUSDC 当作普通 Coin&lt;WRAPPED_USDC&gt; 使用：swap/存借贷皆可
+
+// Sui 侧「赎回/领取」包装资产的示意（用官方 wormhole 包）
+const redeemTx = new Transaction();
+redeemTx.moveCall({
+  target: `${wormholePackage}::token_bridge::redeem`,
+  arguments: [
+    redeemTx.object(wormholeState),     // 桥的状态对象
+    redeemTx.pure.vectorU8(vaaBytes),   // VAA 字节（来自源链）
+  ],
+});
+await client.signAndExecuteTransaction({ transaction: redeemTx, signer: keypair });
+console.log("跨链到账：检查你的 wUSDC 余额");</code></pre>
+<div class="warn"><b>跨链安全：</b>跨链桥是历史漏洞高发区。只使用官方/主流桥、核对目标链 coinType、小额先测；别轻信「高收益跨链挖矿」话术。</div>
+<table>
+<tr><th>资产</th><th>在 Sui 的形态</th><th>用途</th></tr>
+<tr><td>原生 USDC</td><td><code>0xdba...::usdc::USDC</code></td><td>首选，深度最好</td></tr>
+<tr><td>桥接 wUSDC</td><td><code>0x...::wormhole::USDC</code>（包装）</td><td>跨链来的 USDC，注意类型</td></tr>
+<tr><td>wETH</td><td>Wormhole 包装的 ETH</td><td>参与 Sui 上的 ETH 交易对</td></tr>
+</table>
+
+<h2 id="s10">10. 实战框架：行情监控与自动再平衡</h2>
+<p>把前面所有能力串成一个「小机器人」：监听池价格 → 触发再平衡 → 用赞助交易代付执行。下面是骨架。</p>
+<pre><code>// 伪代码：每 10 秒查 Cetus 池价格，偏离目标区间则再平衡
+import { CetusClmmSDK } from "@cetusprotocol/cetus-sui-clmm-sdk";
+
+async function monitorLoop(poolId: string) {
+  const sdk = CetusClmmSDK.createSDK({ env: "mainnet" });
+  const pool = await sdk.Pool.getPool(poolId);
+
+  setInterval(async () =&gt; {
+    const price = await sdk.Pool.getPoolPrice(poolId);
+    const target = 1.0; // 假设目标 1 SUI = 1 USDC
+    const drift = Math.abs(price - target) / target;
+
+    if (drift &gt; 0.02) {  // 偏离 &gt; 2% 触发再平衡
+      console.log("触发再平衡，当前价:", price);
+      // 构造再平衡 PTB：在 Cetus 卖出多余一侧，使组合回归目标比例
+      const tx = new Transaction();
+      // ... 调用 Cetus swap（见 2.3）...
+      // 用赞助交易代付（见 6.1）提交
+      // await submitWithSponsor(tx);
+    }
+  }, 10_000);
+}
+// monitorLoop("0xSUI_USDC池ID");</code></pre>
+<div class="tip"><b>工程化提示：</b>真正上线要加「失败重试、并发限流、gas 预算动态估算、告警」。监听用 checkpoint 订阅而非轮询更稳；执行务必带滑点保护与赞助者风控。</div>
+
+<h2 id="s11">11. 周边生态：SuiNS / Walrus / Seal</h2>
+<p>除 DeFi 外，Sui 还有一组「Sui Stack」基础设施，常和钱包/DeFi 联动：</p>
+<div class="grid c3">
+<div class="card"><h4>SuiNS 域名</h4><p>类似 ENS：把 <code>0x...</code> 地址映射成人名（如 <code>alice.sui</code>）。钱包可解析域名展示，转账用域名更友好。域名本身是对象，可交易。</p></div>
+<div class="card"><h4>Walrus 存储</h4><p>去中心化 Blob 存储，适合存 NFT 元数据、社交内容、备份。费用用 WAL 代币结算，与 Sui 同生态。</p></div>
+<div class="card"><h4>Seal 加密</h4><p>基于 Sui 对象的密钥管理与加密服务，可对存储内容做「按对象权限解密」。</p></div>
+</div>
+<pre><code>// 解析 SuiNS 域名 → 地址（示意，用 sui-names 包）
+const addr = await client.resolveNameServiceAddress({ name: "alice.sui" });
+console.log("alice.sui 对应地址:", addr);
+
+// 反之：地址 → 主域名
+const name = await client.resolveNameServiceNames({ address: "0x你的地址" });
+console.log("你的域名:", name.data);</code></pre>
+<div class="tip"><b>钱包集成价值：</b>把「地址」显示成「域名」能显著降低用户认知负担；NFT/DeFi 的接收方也接受域名输入，体验更接近 Web2。</div>
+
+<h2 id="s12">12. 术语速查表</h2>
+<table>
+<tr><th>术语</th><th>一句话</th></tr>
+<tr><td>PTB</td><td>Programmable Transaction Block，原子编排多命令的交易块。</td></tr>
+<tr><td>CLMM</td><td>集中流动性做市，流动性集中在价格区间（Uniswap V3 类）。</td></tr>
+<tr><td>CLOB</td><td>中央限价订单簿，按价格挂单撮合（DeepBook）。</td></tr>
+<tr><td>LST</td><td>流动性质押代币，如 haSUI，质押后仍能生息与流转。</td></tr>
+<tr><td>LP 头寸</td><td>提供流动性得到的凭证对象，在 Sui 上可转移/拆分。</td></tr>
+<tr><td>BalanceManager</td><td>DeepBook 撮合用的「余额账户」共享对象。</td></tr>
+<tr><td>健康因子</td><td>借贷安全度指标，&lt;1 触发清算。</td></tr>
+<tr><td>滑点</td><td>成交价与预期价的偏差，用 amountOutMin 保护。</td></tr>
+<tr><td>赞助交易</td><td>第三方代付 gas，用户免 gas 交互。</td></tr>
+<tr><td>Wormhole</td><td>跨链桥，把外部资产包装进 Sui。</td></tr>
+</table>
+<div class="note"><b>本篇收尾：</b>三篇 SUI 内容（概念与钱包 → Move 合约 → DeFi 生态）构成了从「读懂」到「能开发」的完整闭环。建议按 13→14→15 顺序动手，每篇练习都跑通 testnet 后再进下一篇。</div>
+
+<h3>1.3 深入理解：对象模型为什么让 DeFi 更快</h3>
+<p>传统 AMM 在 EVM 上是一个「大合约 + 全局储备映射」，每笔 swap 都要读写同一个存储槽，自然串行。Sui 的对象模型带来两点不同：</p>
+<ul>
+<li><b>状态分片到对象：</b>每个 LP 头寸、每个订单都是独立对象。两个不相关的交易引用不同对象，可以真正并行执行，不互相排队。</li>
+<li><b>独占对象免共识：</b>用户对自己 Coin 的转账/授权走 FastPath，不进全局共识，延迟低到亚秒。</li>
+<li><b>共享对象受控并发：</b>只有「全局协调点」（如撮合池、共享计数器）才需要 Mysticeti 共识排序。Sui 把并行收益最大化、把共识开销最小化到必要处。</li>
+</ul>
+<pre><code>// 直观对比：同一时刻 100 个用户各自「转 SUI 给朋友」
+// ETH：100 笔交易在 EVM 里排队执行（同一状态树）
+// Sui：100 个独占 Coin 对象并行执行，互不影响 → 吞吐线性扩展
+
+// 但「100 个用户同时往同一个 DeepBook 池下市价单」
+// 这类共享对象交易必须共识排序（共享对象的代价），需靠池设计优化吞吐</code></pre>
+<div class="quote"><b>设计心法：</b>在 Sui 上做 DeFi，应把高频路径尽量落到「独占对象 + PTB 编排」，把共享对象当作「必要的全局枢纽」而非默认选择。这决定了你的协议能否真正吃到并行红利。</div>
+
+<h2 id="s13">13. DeFi 常见问题排查</h2>
+<table>
+<tr><th>现象</th><th>可能原因</th><th>排查</th></tr>
+<tr><td>swap 失败「price slippage」</td><td>滑点下限过严 / 池子浅</td><td>放宽 amountOutMin 或拆单；用聚合器寻优</td></tr>
+<tr><td>moveCall 报「coin type mismatch」</td><td>传了错误 coinType（假币/精度错）</td><td>核对官方 coinType 全名与 decimals</td></tr>
+<tr><td>DeepBook 下单无成交</td><td>价格偏离盘口 / 流动性不足</td><td>查 getLevel2，确认价格落在可成交区间</td></tr>
+<tr><td>借贷「健康因子不足」</td><td>抵押不够或已接近清算线</td><td>先还款/追加抵押再借</td></tr>
+<tr><td>赞助交易被拒</td><td>赞助者风控拦截 / gas 不足</td><td>检查后端校验逻辑与赞助者余额</td></tr>
+<tr><td>跨链资产没到账</td><td>VAA 未提交 / 目标链类型错</td><td>在桥浏览器查 VAA 状态，确认 redeem 成功</td></tr>
+</table>
+<div class="warn"><b>通用排错顺序：</b>先用 <code>dryRun</code> 看 effects（是否 failure）→ 用 Explorer 查 digest 看详细报错 → 核对对象 ID / coinType / 权限 → 在 testnet 用最小复现验证。不要直接上主网重跑。</div>
+
+<h2 id="s14">14. 延伸阅读与参考资料</h2>
+<ul>
+<li><b>Sui 官方文档</b>：docs.sui.io（CLI、Move、SDK 权威来源）。</li>
+<li><b>Sui Move Intro Course</b>：sui-foundation 出品的 Move 入门课。</li>
+<li><b>The Move Book</b>：move-book.com（Move 语言系统讲解）。</li>
+<li><b>Cetus / DeepBook / Scallop / Haedal</b> 各自官方文档与 GitHub 示例。</li>
+<li><b>Sui GraphQL</b>：主网端点 docs 中的 Schema 浏览器，可在线试 query。</li>
+</ul>
+<div class="tip"><b>学习建议：</b>SDK 版本迭代快，文中 API 名以你安装时的文档为准。遇到方法不存在，优先查对应包的 TypeScript 类型定义（<code>node_modules/@xxx/...</code> 里的 <code>.d.ts</code>）。</div>
+
+<h2 id="s15">15. 端到端示例：钱包 → 合约 → DeFi 串起来</h2>
+<p>把三篇串成一个最小可运行应用：「用户用钱包登录 → 调你自己写的 NFT 合约铸 NFT → 用 Cetus 把 SUI 换成 USDC 付市场手续费 → 在自写市场挂单售出」。下面是主流程伪代码。</p>
+<pre><code>// ① 钱包登录（来自第 I 篇的 dapp-kit）
+const account = useCurrentAccount(); // 用户地址
+
+// ② 调自写 Move 合约铸 NFT（来自第 II 篇的 market::mint_nft）
+const mintTx = new Transaction();
+mintTx.moveCall({ target: `${pkg}::market::mint_nft`, arguments: [mintTx.pure.vectorU8([...])] });
+
+// ③ 同一应用里用 Cetus 换 USDC（来自第 III 篇）付市场挂牌费
+const swapTx = buildCetusSwap({ from: "0x2::sui::SUI", to: usdcType, amount: 1e9 });
+
+// ④ 在自写市场挂单（第 II 篇 list）
+const listTx = new Transaction();
+listTx.moveCall({ target: `${pkg}::market::list`, arguments: [listTx.object(nftId), listTx.pure.u64(price)] });
+
+// ⑤ 用赞助交易代付（第 I/III 篇），让用户免 gas 完成以上组合动作
+await sponsoredExecute([mintTx, swapTx, listTx]); // 三段式或合并为单 PTB</code></pre>
+<div class="quote"><b>三篇闭环：</b>第 I 篇给你「连链与钱包」的能力，第 II 篇给你「写链上资产逻辑」的能力，第 III 篇给你「接入生态与组合」的能力。三者以对象模型与 PTB 为纽带，自然衔接。</div>
+<div class="note"><b>下一步：</b>在 testnet 上把这套流程跑通后，可逐步加入前端展示、事件通知、索引器与赞助服务，演进成一个真实可用的 Sui dApp。</div>
+<div class="tip"><b>复盘三篇：</b>I 篇让你「会连会签」，II 篇让你「会写资产」，III 篇让你「会接生态」。三篇共用同一套心智模型——对象 + 能力 + PTB，这也是 Sui 区别于其他链最值得记住的内核。</div>
+<div class="note"><b>恭喜：</b>走到这里，你已经具备在 Sui 上从零开发钱包交互层、编写 Move 资产合约、接入主流 DeFi 协议的完整能力。后续可在主网小额验证，并持续关注官方文档的 SDK 更新。</div>
+<div class="quote"><b>一句话总结 Sui：</b>用「对象」表达一切资产，用「能力」锁住安全，用「PTB」编排原子组合——这就是它高并发、低延迟、易组合的全部秘密。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 Cetus SDK 在 testnet 上查一个 SUI/USDC 池，估算「用 0.1 SUI 换 USDC」的输出，并以 0.5% 滑点执行 swap。</li>
+<li>用 DeepBook V3 客户端读一个池的 Level2 盘口，打印买卖一档；再建 BalanceManager 并下一笔限价单后撤单。</li>
+<li>用 Scallop SDK 存 5 SUI，再借出少量 USDC，查询你的健康因子。</li>
+<li>质押 5 SUI 得 haSUI，查余额，再演示解质押流程（注意解锁期）。</li>
+<li>写一个 GraphQL 脚本，查某地址最近 10 笔交易及其状态；再写个 queryEvents 轮询监听你刚发的某个事件。</li>
+<li>搭建赞助交易框架：用赞助者账户代付，完成一笔用户的 SUI 转账，验证 gas 从赞助者扣除。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能画出 Sui DeFi 生态地图：DeepBook/Cetus/Bluefin/借贷/LST/跨链各自角色。</li>
+<li>能对照 ETH/SOL 说出 Sui 在「LP 头寸对象化、并行撮合、单 PTB 组合」上的差异。</li>
+<li>能用 Cetus SDK 完成查池、preswap 估算、带滑点的 PTB swap 与添加流动性。</li>
+<li>能解释 DeepBook 的 BalanceManager 机制与「下单/撤单」代码流程。</li>
+<li>能用 Scallop SDK 存借款、用 Haedal 质押得 haSUI 并查询余额。</li>
+<li>能写一个 Sui GraphQL 查询取交易/对象/事件，并知道 Explorer 的基本用法。</li>
+<li>能用 queryEvents 做事件监听，并说出「自建索引器」的必要性。</li>
+<li>能写出赞助交易的两段式签名框架，并说明赞助者的风控要点。</li>
+</ul></div>
+
+<div class="pager"><a href="14-sui-move.html"><b>上一篇</b>← SUI 篇 II：Move 合约开发</a><a class="next" href="index.html"><b>下一篇</b>课程目录 →</a></div>
+</main></body></html>

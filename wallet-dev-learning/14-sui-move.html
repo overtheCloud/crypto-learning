@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUI 篇 II：Move 合约开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html" class="cur">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">SUI 篇 II：Move 合约开发</span><span class="chain chain-sui">SUI</span></header>
+<main class="doc">
+<h1>SUI 篇 II：Move 合约开发</h1><p class="subtitle">从 Sui CLI 到五个递进实战，完整掌握 Move 语法、Coin 标准与合约测试。主要参考：docs.sui.io、Sui Move Intro Course（sui-foundation）、The Move Book（move-book.com）。</p>
+<div class="goals"><b>本章目标：</b>
+<ul style="margin-top:8px">
+<li>配好 Sui CLI 与 testnet 环境，跑通 build/test/publish 全流程。</li>
+<li>理解 module/use、基本类型、可见性、结构体四能力与对象三要素。</li>
+<li>掌握 transfer/share/freeze 与 TxContext，能正确表达对象所有权。</li>
+<li>读懂 Coin 标准：OTW、TreasuryCap、create_currency 与拆合支付。</li>
+<li>完成五个递进实战（Counter → 共享计数 → 自定义币 → 捐赠罐 → NFT 市场）。</li>
+<li>会用 #[test] 与 test_scenario 写测试，并识别常见安全陷阱。</li>
+</ul></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 环境与开发流程</a>
+<a href="#s2">2. Move 语法系统</a>
+<a href="#s3">3. Coin 标准精讲</a>
+<a href="#s4">4. 实战一：独占对象 Counter</a>
+<a href="#s5">5. 实战二：共享计数器</a>
+<a href="#s6">6. 实战三：自定义 Coin 发币</a>
+<a href="#s7">7. 实战四：捐赠罐 TipJar</a>
+<a href="#s8">8. 实战五：NFT 市场（核心）</a>
+<a href="#s9">9. 单元测试与 test_scenario</a>
+<a href="#s10">10. 安全与陷阱</a>
+</div>
+
+<h2 id="s1">1. 环境与开发流程</h2>
+<h3>1.1 安装 Sui CLI</h3>
+<p>两种方式二选一：</p>
+<pre><code># 方式 A：用官方安装脚本（推荐，自动装最新稳定版）
+curl -sSf https://raw.githubusercontent.com/MystenLabs/sui/main/scripts/install.sh | sh
+
+# 方式 B：从源码用 Rust 编译（需先装 Rust toolchain）
+cargo install --locked --git https://github.com/MystenLabs/sui.git --branch main sui</code></pre>
+<p>装好后确认版本：</p>
+<pre><code>sui --version
+# 输出类似：sui 1.30.0-...</code></pre>
+
+<h3>1.2 配置 testnet 并领水</h3>
+<pre><code># 生成/选用一个地址身份（默认生成新密钥对）
+sui client new-address ed25519
+
+# 配置 testnet 全节点环境（名为 testnet）
+sui client new-env --alias testnet --rpc https://fullnode.testnet.sui.io:443
+
+# 切到该环境并设为活跃
+sui client switch --env testnet
+
+# 领测试水（依赖反机器人，偶尔需手动到 https://faucet.sui.io）
+sui client faucet</code></pre>
+<div class="tip"><b>提示：</b><code>sui client addresses</code> 查看本机地址；<code>sui client active-address</code> 查看当前活跃地址。发布合约用的是当前活跃地址。</div>
+
+<h3>1.3 项目结构与核心命令</h3>
+<pre><code># 创建一个 Move 项目
+sui move new my_first_package
+# 生成的目录结构：
+# my_first_package/
+# ├── Move.toml          # 包清单（包名、版本、依赖）
+# ├── sources/           # 你的 .move 源文件放在这里
+# ├── tests/             # 单元测试
+# └── Move.lock          # 依赖锁文件
+
+cd my_first_package
+
+# 编译
+sui move build
+
+# 跑单元测试
+sui move test
+
+# 发布到 testnet（需先领水付 gas/存储费）
+sui move publish --gas-budget 100000000</code></pre>
+<p><code>Move.toml</code> 长这样：</p>
+<pre><code>[package]
+name = "my_first_package"
+edition = "2024.beta" # 或 "legacy"
+version = "0.0.1"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+my_first_package = "0x0"   # 本地开发用 0x0 占位，发布时由链分配真实 ID
+
+[dev-addresses]
+# 测试用地址别名
+# my_first_package = "0xDEADBEEF"</code></pre>
+
+<h3>1.4 包升级：UpgradeCap 与兼容性</h3>
+<ul>
+<li>发布时会生成一个 <b>UpgradeCap</b> 对象（独占对象），它持有对该包的升级权限。</li>
+<li>升级需满足<b>兼容性规则</b>：可以新增函数/结构体、给结构体<b>追加</b>字段（带默认值语义），但不能删除/重排已有字段、不能改已发布结构体的能力（ability）。</li>
+<li>升级命令：<code>sui move publish --upgrade-capability &lt;UpgradeCap对象ID&gt;</code>（或 <code>--skip-fetch-latest-git-deps</code> 加速）。</li>
+</ul>
+<div class="warn"><b>升级风险：</b>掌握 UpgradeCap 等于能改合约逻辑。金库类合约建议发布后把 UpgradeCap 转交多签或销毁（<code>transfer::public_transfer</code> 给多签 / 或调用 <code>upgrade::burn</code>）。</div>
+
+<h2 id="s2">2. Move 语法系统</h2>
+<p>下面逐点铺开 Move（Sui 版）语法，每点配可运行代码。</p>
+
+<h3>2.1 module 声明与地址别名</h3>
+<pre><code>// 一个 module 属于某个「包」，包发布后模块全名形如 0x包ID::模块名
+module my_first_package::basic {
+    // 模块体
+}</code></pre>
+<p>地址别名用于引用别人包里的模块：</p>
+<pre><code>module my_first_package::basic {
+    use sui::balance;        // 直接按「包名::模块」导入（sui 是框架包别名）
+    use sui::coin::{Self, Coin}; // 导入 coin 模块及其下的 Coin 类型
+}</code></pre>
+
+<h3>2.2 use 导入与可见性</h3>
+<table>
+<tr><th>写法</th><th>含义</th></tr>
+<tr><td><code>use sui::coin;</code></td><td>导入模块，使用时写 <code>coin::xxx</code>。</td></tr>
+<tr><td><code>use sui::coin::Coin;</code></td><td>只导入 <code>Coin</code> 类型，可直接写 <code>Coin&lt;T&gt;</code>。</td></tr>
+<tr><td><code>use sui::coin::{Self, Coin};</code></td><td>同时导入模块与其中类型。</td></tr>
+</table>
+
+<h3>2.3 基本类型与 vector</h3>
+<pre><code>module my_first_package::basic {
+    // 基本标量类型：u8 / u8..u256、bool、address、signer
+    // vector&lt;T&gt; 是动态数组
+    fun demo() {
+        let a: u8 = 1;
+        let b: u64 = 1_000_000;
+        let c: u128 = 340282366920938463463374607431768211455;
+        let ok: bool = true;
+        let addr: address = @0xA;            // 字面量地址
+
+        let v: vector&lt;u8&gt; = vector[1, 2, 3]; // 字节数组常用于字符串/哈希
+        let len = v.length();                 // 取长度
+        v.push_back(4);                       // 追加
+    }
+}</code></pre>
+
+<h3>2.4 函数可见性：public / entry / public(friend)</h3>
+<table>
+<tr><th>修饰</th><th>谁能调用</th><th>能否作为交易入口</th></tr>
+<tr><td>（默认）</td><td>仅同模块内</td><td>否</td></tr>
+<tr><td><code>public</code></td><td>任意模块</td><td>否（只能被别的 Move 调用）</td></tr>
+<tr><td><code>entry</code></td><td>仅同模块内 + 可作为交易入口</td><td>是</td></tr>
+<tr><td><code>public entry</code></td><td>任意模块 + 可作为交易入口</td><td>是</td></tr>
+<tr><td><code>public(friend)</code></td><td>仅 friend 模块</td><td>否</td></tr>
+</table>
+<pre><code>module my_first_package::basic {
+    // 只能被 PTB 直接调用（交易入口），但别的模块不能内部调用它
+    entry fun only_entry() {}
+
+    // 既能当入口，又能被别的模块调用
+    public entry fun public_entry(x: u64) {}
+
+    // 内部工具函数
+    fun helper() {}
+}</code></pre>
+<div class="note"><b>关键区别：</b>只有带 <code>entry</code> 的函数才能被外部交易（PTB 的 MoveCall）直接调用；普通 <code>public</code> 函数只能被其他 Move 代码调用，不能当交易入口。</div>
+
+<h3>2.5 结构体与四种能力（Ability）</h3>
+<p>能力决定一个值「能做什么」，对资产安全至关重要：</p>
+<table>
+<tr><th>能力</th><th>含义</th><th>对资产的意义</th></tr>
+<tr><td><code>key</code></td><td>可作为全局对象（有 UID）</td><td>资产对象必须有它，才能存链上、被索引</td></tr>
+<tr><td><code>store</code></td><td>可被存入其他结构 / 被转移</td><td>允许资产在对象间流转、被包裹</td></tr>
+<tr><td><code>copy</code></td><td>值可被复制</td><td>资产<b>绝不能</b>有，否则能无限复制</td></tr>
+<tr><td><code>drop</code></td><td>作用域结束可被丢弃</td><td>资产<b>绝不能</b>有，否则能凭空销毁</td></tr>
+</table>
+<pre><code>module my_first_package::basic {
+    // 真金白银的资产：只给 key + store
+    struct GoldCoin has key, store {
+        id: UID,
+        value: u64,
+    }
+
+    // 纯配置/常量：给 copy + drop 方便使用
+    struct Config has copy, drop {
+        fee_bps: u64,
+    }
+
+    // 一次性见证（见 Coin 标准）：只给 drop
+    struct MY_TOKEN has drop {}
+}</code></pre>
+<div class="warn"><b>铁律：</b>任何「代表价值」的对象都只能有 <code>key, store</code>，绝不能加 <code>copy</code> 或 <code>drop</code>。一旦误加，攻击者可能复制或丢弃你的资产。</div>
+
+<h3>2.6 对象三要素：UID、id 字段、object::new</h3>
+<pre><code>module my_first_package::basic {
+    use sui::object::{Self, UID};
+    use sui::tx_context::{Self, TxContext};
+
+    struct Counter has key {
+        id: UID,        // 每个对象必须有且仅有一个 id: UID 字段
+        value: u64,
+    }
+
+    public entry fun create(ctx: &mut TxContext) {
+        // object::new(ctx) 用交易上下文派生出唯一 UID
+        let c = Counter { id: object::new(ctx), value: 0 };
+        // 转移逻辑见 2.7
+    }
+}</code></pre>
+<div class="note"><b>为什么 UID：</b>链上用 UID（内部是个 32 字节 ID）唯一标识对象。两个对象即便内容相同，UID 也不同，因此不会被混淆。</div>
+
+<h3>2.7 转移语义：transfer / public_transfer / share_object / freeze_object</h3>
+<table>
+<tr><th>函数</th><th>效果</th><th>对象后续归属</th></tr>
+<tr><td><code>transfer::transfer(obj, addr)</code></td><td>把对象转给 addr</td><td>成为 addr 的独占对象</td></tr>
+<tr><td><code>transfer::public_transfer(obj, addr)</code></td><td>同上，但可被任意模块调用</td><td>独占对象</td></tr>
+<tr><td><code>transfer::share_object(obj)</code></td><td>把对象设为共享</td><td>共享对象（任何人可引用）</td></tr>
+<tr><td><code>transfer::freeze_object(obj)</code></td><td>冻结对象</td><td>不可变对象（永久只读）</td></tr>
+</table>
+<pre><code>module my_first_package::basic {
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+
+    struct Thing has key, store { id: UID, v: u64 }
+
+    // 私有的：仅本模块能调用 transfer
+    public entry fun make_private(ctx: &mut TxContext) {
+        let t = Thing { id: object::new(ctx), v: 1 };
+        transfer::transfer(t, tx_context::sender(ctx)); // 给调用者
+    }
+
+    // 共享：谁都能引用它（如全局计数器、订单簿）
+    public entry fun make_shared(ctx: &mut TxContext) {
+        let t = Thing { id: object::new(ctx), v: 1 };
+        transfer::share_object(t);
+    }
+
+    // 冻结：发布后永久不可改
+    public entry fun make_immutable(ctx: &mut TxContext) {
+        let t = Thing { id: object::new(ctx), v: 1 };
+        transfer::freeze_object(t);
+    }
+}</code></pre>
+
+<h3>2.8 TxContext 与 ctx.sender()</h3>
+<p><code>TxContext</code> 是每笔交易自动注入的上下文，提供：<code>sender()</code>（付款方地址）、<code>object::new(ctx)</code> 造 UID、<code>fresh_object_address()</code> 等。注意它几乎总是 <code>&mut TxContext</code> 参数。</p>
+<pre><code>use sui::tx_context::{Self, TxContext};
+
+public entry fun whoami(ctx: &mut TxContext) {
+    let caller = tx_context::sender(ctx); // 当前交易的发送者地址
+    // 用 caller 做权限判断、记录 owner 等
+}</code></pre>
+
+<h3>2.9 泛型与 phantom</h3>
+<p><code>phantom</code> 用于「类型参数只出现在类型标记里、不出现在字段值里」的泛型，避免 unused 报错；典型就是 Coin 的 <code>Coin&lt;T&gt;</code> 中 T 是 phantom。</p>
+<pre><code>module my_first_package::basic {
+    use sui::object::{Self, UID};
+
+    // T 是 phantom：结构体里没有直接存 T 类型的值，只用于类型区分
+    struct Wrapper&lt;phantom T&gt; has key, store {
+        id: UID,
+        amount: u64,
+    }
+}</code></pre>
+
+<h3>2.10 Option 与 String</h3>
+<pre><code>module my_first_package::basic {
+    use std::option::{Self, Option};
+    use sui::string::String;
+
+    fun demo() {
+        let some: Option&lt;u64&gt; = option::some(10);
+        let none: Option&lt;u64&gt; = option::none();
+        if (option::is_some(&some)) {
+            let v = option::borrow(&some); // 借用内部值
+        };
+
+        // String 有两种：ASCII（ascii::String）与 UTF8（string::String）
+        let name: String = sui::string::utf8(b"你好 Sui");
+    }
+}</code></pre>
+<div class="tip"><b>提示：</b>Sui 里展示名/描述常用 <code>String</code>（UTF8），而合约内部标识（symbol）常用 <code>vector&lt;u8&gt;</code> 或 <code>ascii::String</code>。</div>
+
+<h3>2.11 动态集合：Table / Bag / ObjectTable 与动态字段</h3>
+<p>当「键的集合在编译期未知」时，用动态集合而非固定字段：</p>
+<table>
+<tr><th>类型</th><th>键/值</th><th>特点</th></tr>
+<tr><td><code>Table&lt;K, V&gt;</code></td><td>任意 K、任意 V</td><td>单独对象，含全部键值对</td></tr>
+<tr><td><code>Bag</code></td><td>任意 K、任意 V</td><td>与父对象「同生命周期」打包存</td></tr>
+<tr><td><code>ObjectTable&lt;K, V&gt;</code></td><td>K、V 为对象</td><td>值是对象，便于分别转移</td></tr>
+<tr><td>动态字段 DOF</td><td>挂在对象上</td><td>用 <code>dynamic_field</code> 在对象上挂任意键值</td></tr>
+</table>
+<pre><code>module my_first_package::basic {
+    use sui::table::{Self, Table};
+
+    struct Registry has key {
+        id: UID,
+        items: Table&lt;address, u64&gt;, // 地址 -&gt; 数值 的动态映射
+    }
+
+    public entry fun add(reg: &mut Registry, who: address, v: u64) {
+        table::add(&mut reg.items, who, v);
+    }
+    public entry fun get(reg: &Registry, who: address): u64 {
+        table::borrow(&reg.items, who)
+    }
+}</code></pre>
+
+<h3>2.12 事件、Clock 与 Random</h3>
+<pre><code>module my_first_package::basic {
+    use sui::event;
+    use sui::clock::{Self, Clock};
+    use sui::random::{Self, Random};
+
+    // 事件结构体：发出后链下可索引（注意事件结构通常只写一次）
+    struct CounterIncremented has copy, drop, store {
+        new_value: u64,
+    }
+
+    public entry fun tick(ctx: &mut TxContext) {
+        let new_v = 1;
+        event::emit(CounterIncremented { new_value: new_v });
+    }
+
+    // 取当前时间（需引用共享的 Clock 对象）
+    public entry fun now(clock: &Clock) {
+        let ts = clock::timestamp_ms(clock); // 毫秒
+    }
+
+    // 取随机数（需引用 Random 对象；链上随机用于游戏/抽奖）
+    public entry fun roll(random: &Random) {
+        let rand = random::generate(random, /*种子*/ b"seed", ctx);
+    }
+}</code></pre>
+<div class="note"><b>Clock 与 Random 是共享对象：</b>调用时由 PTB 把系统的 <code>0x6</code>（Clock）或 <code>Random</code> 对象作为实参传入。它们走共识，但读取开销低。</div>
+
+<h2 id="s3">3. Coin 标准精讲</h2>
+<p>Sui 的原生代币（包括 SUI 与你发的任意币）都遵循 <code>sui::coin</code> 标准。</p>
+<table>
+<tr><th>类型</th><th>作用</th></tr>
+<tr><td><code>Coin&lt;T&gt;</code></td><td>用户持有的「币对象」；内部持有一个 <code>Balance&lt;T&gt;</code>。</td></tr>
+<tr><td><code>Balance&lt;T&gt;</code></td><td>纯数值余额（无对象壳），用于合约内部记账。</td></tr>
+<tr><td><code>TreasuryCap&lt;T&gt;</code></td><td>铸造/销毁权限对象（谁持有谁就能 mint/burn）。</td></tr>
+<tr><td><code>CoinMetadata&lt;T&gt;</code></td><td>币种元信息（名/符号/精度/图标）。</td></tr>
+</table>
+
+<h3>3.1 一次性见证 OTW 与 init</h3>
+<p>发币的关键机制是 <b>OTW（One-Time Witness，一次性见证）</b>：一个模块发布时，链会自动创建一个「名字等于模块名」的、带 <code>drop</code> 能力的空结构体实例，作为「我确实发布了这个币」的证明。<code>init</code> 函数（模块初始化函数）会收到它。</p>
+<pre><code>module my_coin::my_coin {
+    use sui::coin::{Self, TreasuryCap, Coin};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+
+    // OTW：名字==模块名 MY_COIN，仅 drop 能力。链发布时自动产生一个实例
+    struct MY_COIN has drop {}
+
+    // 模块初始化：仅在 publish 时执行一次
+    fun init(witness: MY_COIN, ctx: &mut TxContext) {
+        let (treasury_cap, metadata) = coin::create_currency&lt;MY_COIN&gt;(
+            witness,
+            9,                       // 小数位（与 SUI 一致 9）
+            b"MYC",                  // symbol 符号
+            b"My Coin",              // name 名称
+            b"demo coin on Sui",     // description 描述
+            option::none(),          // icon URL（可选）
+            ctx,
+        );
+        // 把权限与元信息转给发布者（重要：否则没人能 mint）
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+        transfer::public_transfer(metadata, tx_context::sender(ctx));
+    }
+}</code></pre>
+
+<h3>3.2 mint / burn / freeze metadata</h3>
+<pre><code>    // 铸造：只有持有 TreasuryCap 的人能调
+    public entry fun mint(
+        cap: &mut TreasuryCap&lt;MY_COIN&gt;,
+        amount: u64,
+        recipient: address,
+        ctx: &mut TxContext,
+    ) {
+        let coin = coin::mint(cap, amount, ctx);
+        transfer::public_transfer(coin, recipient);
+    }
+
+    // 销毁：把币回收（减少总供应）
+    public entry fun burn(cap: &mut TreasuryCap&lt;MY_COIN&gt;, coin: Coin&lt;MY_COIN&gt;) {
+        coin::burn(cap, coin);
+    }
+
+    // 冻结元信息：冻结后 symbol/name/icon 不可再改（增强可信度）
+    public entry fun freeze_metadata(metadata: &mut CoinMetadata&lt;MY_COIN&gt;) {
+        coin::freeze_metadata(metadata);
+    }</code></pre>
+
+<h3>3.3 TreasuryCap 的权限管理</h3>
+<p><code>TreasuryCap</code> 本身是一个独占对象。你可以：</p>
+<ul>
+<li><b>转交</b>：<code>transfer::public_transfer(cap, new_owner)</code> 把发币权交给别人/多签。</li>
+<li><b>销毁</b>：<code>coin::burn_supply(cap)</code> 后该币将再无法 mint（常用于「固定总量」）。</li>
+<li><b>托管</b>：把 cap 交给一个「治理合约」的共享对象，由治理逻辑控制 mint。</li>
+</ul>
+<div class="warn"><b>泄露即失控：</b>TreasuryCap 一旦落到他人独占对象且你无法取回，对方就能无限增发你的币。发布后请立即转交多签或销毁。</div>
+
+<h3>3.4 Coin 拆合与 PTB 支付</h3>
+<p><code>Coin&lt;T&gt;</code> 的拆合由 SDK 的 <code>splitCoins/mergeCoins</code>（见上篇）完成；合约侧用 <code>coin::from_balance</code> / <code>coin::into_balance</code> 在 Coin 与 Balance 间转换。支付时在 PTB 里把拆好的 Coin 作为 <code>Coin&lt;T&gt;</code> 参数传给 moveCall 即可。</p>
+
+<h2 id="s4">4. 实战一：独占对象 Counter</h2>
+<p>最经典的入门：每个用户拥有一个「归自己的计数器」对象，只有自己能 +1。这是<b>独占对象</b>，走 FastPath，最快。</p>
+<pre><code>// sources/counter.move
+module counter::counter {
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+
+    // 计数器对象：key + store（无 copy/drop）
+    struct Counter has key {
+        id: UID,
+        value: u64,
+    }
+
+    // 创建并归调用者所有
+    public entry fun create(ctx: &mut TxContext) {
+        let counter = Counter { id: object::new(ctx), value: 0 };
+        transfer::transfer(counter, tx_context::sender(ctx));
+    }
+
+    // 自增（参数是 &mut，因为对象归调用者，可直接借用）
+    public entry fun increment(counter: &mut Counter) {
+        counter.value = counter.value + 1;
+    }
+
+    // 读值（view 函数，不需要 entry，可被 devInspect 调用）
+    public fun value(counter: &Counter): u64 {
+        counter.value
+    }
+}</code></pre>
+<p>TS 调用：</p>
+<pre><code>// 创建
+const tx = new Transaction();
+tx.moveCall({ target: `${pkg}::counter::create` });
+await client.signAndExecuteTransaction({ transaction: tx, signer });
+
+// 先查自己的 Counter 对象 ID
+const objs = await client.getOwnedObjects({
+  owner: me,
+  filter: { StructType: `${pkg}::counter::Counter` },
+  options: { showContent: true },
+});
+const id = objs.data[0].data?.objectId;
+
+// 自增（对象 ID 作为引用传入）
+const tx2 = new Transaction();
+tx2.moveCall({ target: `${pkg}::counter::increment`, arguments: [tx2.object(id)] });
+await client.signAndExecuteTransaction({ transaction: tx2, signer });</code></pre>
+
+<h2 id="s5">5. 实战二：共享计数器</h2>
+<p>把计数器改成<b>共享对象</b>，任何人都能 +1。注意：共享对象走共识、有并发开销，适合同步状态。</p>
+<pre><code>// sources/shared_counter.move
+module counter::shared_counter {
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+
+    struct SharedCounter has key {
+        id: UID,
+        value: u64,
+    }
+
+    // 创建后 share（变为共享对象）
+    public entry fun create(ctx: &mut TxContext) {
+        let c = SharedCounter { id: object::new(ctx), value: 0 };
+        transfer::share_object(c);
+    }
+
+    // 任何人都能 +1
+    public entry fun increment(counter: &mut SharedCounter) {
+        counter.value = counter.value + 1;
+    }
+}</code></pre>
+<div class="note"><b>对照：</b>共享计数器与实战一的唯一差别是 <code>share_object</code> 替代 <code>transfer</code>。代价是每笔交易都要共识排序；高频计数请优先考虑「每用户独占 + 汇总」模式。</div>
+
+<h2 id="s6">6. 实战三：自定义 Coin 发币</h2>
+<p>把 3.1/3.2 的片段组合成完整可发布模块，并演示 mint 给朋友。</p>
+<pre><code>// sources/my_coin.move
+module my_coin::my_coin {
+    use sui::coin::{Self, TreasuryCap, Coin, CoinMetadata};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+    use std::option::{Self, Option};
+
+    struct MY_COIN has drop {}
+
+    fun init(witness: MY_COIN, ctx: &mut TxContext) {
+        let (treasury_cap, metadata) = coin::create_currency&lt;MY_COIN&gt;(
+            witness, 9, b"MYC", b"My Coin", b"demo", option::none(), ctx,
+        );
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+        transfer::public_transfer(metadata, tx_context::sender(ctx));
+    }
+
+    public entry fun mint(
+        cap: &mut TreasuryCap&lt;MY_COIN&gt;,
+        amount: u64,
+        recipient: address,
+        ctx: &mut TxContext,
+    ) {
+        let coin = coin::mint(cap, amount, ctx);
+        transfer::public_transfer(coin, recipient);
+    }
+
+    public entry fun burn(cap: &mut TreasuryCap&lt;MY_COIN&gt;, coin: Coin&lt;MY_COIN&gt;) {
+        coin::burn(cap, coin);
+    }
+}</code></pre>
+<p>TS 调用 mint（注意 TreasuryCap 对象 ID 也要传入）：</p>
+<pre><code>const tx = new Transaction();
+tx.moveCall({
+  target: `${pkg}::my_coin::mint`,
+  arguments: [
+    tx.object(treasuryCapId),         // TreasuryCap 对象
+    tx.pure.u64(1_000_000_000),       // 1 个 MYC（9 位精度）
+    tx.pure.address(friendAddress),   // 接收者
+  ],
+  typeArguments: [],                  // 本例币种由模块固定，无需泛型
+});
+await client.signAndExecuteTransaction({ transaction: tx, signer });</code></pre>
+
+<h2 id="s7">7. 实战四：捐赠罐 TipJar</h2>
+<p>一个<b>共享对象</b>收 SUI，owner 可提取。演示「共享对象 + 权限判断 + 转 Coin」。</p>
+<pre><code>// sources/tip_jar.move
+module tip_jar::tip_jar {
+    use sui::coin::{Self, Coin};
+    use sui::sui::SUI;
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+
+    struct TipJar has key {
+        id: UID,
+        owner: address,
+        total: u64,
+    }
+
+    // 创建共享捐赠罐
+    public entry fun create(ctx: &mut TxContext) {
+        let jar = TipJar {
+            id: object::new(ctx),
+            owner: tx_context::sender(ctx),
+            total: 0,
+        };
+        transfer::share_object(jar);
+    }
+
+    // 任何人捐赠：把 Coin&lt;SUI&gt; 转给 jar.owner，并记录总额
+    public entry fun donate(jar: &mut TipJar, payment: Coin&lt;SUI&gt;) {
+        let amount = coin::value(&payment);
+        jar.total = jar.total + amount;
+        transfer::public_transfer(payment, jar.owner);
+    }
+
+    // 仅 owner 提取（清空罐并销毁共享对象）
+    public entry fun withdraw(jar: &mut TipJar, ctx: &mut TxContext) {
+        assert!(tx_context::sender(ctx) == jar.owner, 0); // 0 = 非 owner
+        // 若想返还，可把 jar 内累计余额用 coin::from_balance 转出；
+        // 这里演示「提取后删除对象」：
+        let TipJar { id, owner: _, total: _ } = jar;
+        object::delete(id);
+    }
+}</code></pre>
+<div class="warn"><b>注意：</b>上面 <code>withdraw</code> 直接删除罐但没把累计余额退还——因为余额早已在 <code>donate</code> 时转给 owner。若你设计成「余额留在 jar 内」则需在 withdraw 里用 <code>coin::from_balance</code> 把 <code>Balance&lt;SUI&gt;</code> 转出。请按你的设计保持一致。</div>
+
+<h2 id="s8">8. 实战五：NFT 市场（核心）</h2>
+<p>这是本章核心：一个完整、可组合、原子交换的 NFT 市场。包含三个函数——</p>
+<ul>
+<li><code>list</code>：卖家把 NFT 挂单（放进共享 Listing 对象，记录价格与卖家）。</li>
+<li><code>buy</code>：买家用 PTB 付 <code>Coin&lt;SUI&gt;</code>，<b>原子</b>拿到 NFT、卖家收到币。</li>
+<li><code>cancel</code>：卖家取消挂单，取回 NFT。</li>
+</ul>
+<pre><code>// sources/market.move
+module nft_market::market {
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::coin::{Self, Coin};
+    use sui::sui::SUI;
+    use sui::tx_context::{Self, TxContext};
+    use sui::string::String;
+
+    // 一个最简 NFT：有 id 与名字（key + store 才能流转）
+    struct NFT has key, store {
+        id: UID,
+        name: String,
+    }
+
+    // 挂单对象（共享），持有被卖的 NFT
+    struct Listing has key {
+        id: UID,
+        nft: NFT,
+        price: u64,       // 单位 MIST
+        seller: address,
+    }
+
+    // 铸造一个测试 NFT（演示用，真实场景应有独立 NFT 合约）
+    public entry fun mint_nft(name: vector&lt;u8&gt;, ctx: &mut TxContext): NFT {
+        let nft = NFT { id: object::new(ctx), name: sui::string::utf8(name) };
+        transfer::transfer(nft, tx_context::sender(ctx)); // 先归铸造者
+        nft                                            // 返回以便链式使用
+    }
+
+    // 挂单：把 NFT 包进共享 Listing
+    public entry fun list(nft: NFT, price: u64, ctx: &mut TxContext) {
+        let listing = Listing {
+            id: object::new(ctx),
+            nft,
+            price,
+            seller: tx_context::sender(ctx),
+        };
+        transfer::share_object(listing);
+    }
+
+    // 购买：原子交换（NFT 归买家，SUI 归卖家）
+    public entry fun buy(listing: Listing, payment: Coin&lt;SUI&gt;, ctx: &mut TxContext) {
+        let Listing { id, nft, price, seller } = listing;
+        object::delete(id);                              // 摘单
+        assert!(coin::value(&payment) == price, 1);      // 1 = 付款金额不符
+        transfer::public_transfer(payment, seller);      // 币给卖家
+        transfer::public_transfer(nft, tx_context::sender(ctx)); // NFT 给买家
+    }
+
+    // 取消：仅卖家可取回 NFT
+    public entry fun cancel(listing: Listing, ctx: &mut TxContext) {
+        assert!(tx_context::sender(ctx) == listing.seller, 2); // 2 = 非卖家
+        let Listing { id, nft, price: _, seller: _ } = listing;
+        object::delete(id);
+        transfer::public_transfer(nft, tx_context::sender(ctx));
+    }
+}</code></pre>
+<h3>8.1 TS 端：挂单</h3>
+<pre><code>// 卖家挂单：把自己的 NFT 对象转入 Listing
+const listTx = new Transaction();
+listTx.moveCall({
+  target: `${pkg}::market::list`,
+  arguments: [
+    listTx.object(nftId),               // 卖家名下的 NFT 对象
+    listTx.pure.u64(50_000_000),        // 售价 0.05 SUI（MIST）
+  ],
+});
+await client.signAndExecuteTransaction({ transaction: listTx, signer: seller });</code></pre>
+<h3>8.2 TS 端：购买（PTB 原子付币）</h3>
+<pre><code>// 买家：拆出精确面额 SUI 作为 payment，调用 buy
+const buyTx = new Transaction();
+const [payment] = buyTx.splitCoins(buyTx.gas, [buyTx.pure.u64(50_000_000)]);
+buyTx.moveCall({
+  target: `${pkg}::market::buy`,
+  arguments: [
+    buyTx.object(listingId),   // 共享 Listing 对象
+    payment,                   // 恰好 price 的 Coin&lt;SUI&gt;
+  ],
+});
+const res = await client.signAndExecuteTransaction({ transaction: buyTx, signer: buyer });
+await client.waitForTransaction({ digest: res.digest });
+// 成功：buyer 名下出现 NFT 对象，seller 余额 +0.05 SUI</code></pre>
+<h3>8.3 TS 端：取消</h3>
+<pre><code>const cancelTx = new Transaction();
+cancelTx.moveCall({
+  target: `${pkg}::market::cancel`,
+  arguments: [cancelTx.object(listingId)],
+});
+await client.signAndExecuteTransaction({ transaction: cancelTx, signer: seller });</code></pre>
+<div class="quote"><b>为什么这是「原子」的：</b>整个 buy 是一个 PTB，要么付款与转 NFT 同时成功，要么全回滚。买家不可能「付了钱没拿到 NFT」，卖家也不可能「丢了 NFT 没收钱」——这正是 PTB 编排的威力。</div>
+
+<h2 id="s9">9. 单元测试与 test_scenario</h2>
+<h3>9.1 普通 #[test] 单元测试</h3>
+<pre><code>// tests/counter_tests.move
+#[test]
+fun test_create_increment() {
+    use sui::tx_context;
+    let ctx = &mut tx_context::dummy();   // 测试用假上下文
+    let c = counter::Counter { id: object::new(ctx), value: 0 };
+    counter::increment(&mut c);
+    assert!(counter::value(&c) == 1, 0);
+}</code></pre>
+<p>运行：<code>sui move test</code>。</p>
+
+<h3>9.2 test_scenario：多交易多用户模拟</h3>
+<p><code>test_scenario</code> 让你在单测里模拟「用户 A 发交易 → 用户 B 发交易」的真实流程，包括对象在用户间转移。</p>
+<pre><code>// tests/market_tests.move
+#[test]
+fun test_list_and_buy() {
+    use sui::test_scenario;
+    use sui::tx_context;
+
+    let seller = @0xA;
+    let buyer  = @0xB;
+
+    // ① 卖家铸造一个 NFT（mint_nft 返回并直接转移给 sender）
+    test_scenario::begin(seller);
+    {
+        let ctx = &mut tx_context::dummy();
+        // 用场景框架取回卖家刚得到的 NFT 并挂单
+        let nft = test_scenario::take_from_sender&lt;nft_market::market::NFT&gt;(seller);
+        nft_market::market::list(nft, 50_000_000, ctx);
+    };
+
+    // ② 买家购买：付 SUI（测试中用 test_scenario 提供的 coin 设施）
+    test_scenario::next_tx(buyer);
+    {
+        // 取回刚创建的 Listing 共享对象
+        let listing = test_scenario::take_shared&lt;nft_market::market::Listing&gt;();
+        // 用买家余额造一个 Coin&lt;SUI&gt; 作为 payment
+        let payment = test_scenario::sui_coins_for_testing(50_000_000);
+        nft_market::market::buy(listing, payment, &mut tx_context::dummy());
+    };
+
+    // ③ 校验买家拿到 NFT、卖家余额增加
+    test_scenario::next_tx(buyer);
+    {
+        let _nft = test_scenario::take_from_sender&lt;nft_market::market::NFT&gt;(buyer);
+        // 若取到说明购买成功转移到买家
+    };
+
+    test_scenario::end();
+}</code></pre>
+<div class="tip"><b>说明：</b><code>test_scenario</code> 的具体辅助函数名随 Sui 版本略有差异；核心套路是 <code>begin → take_from_sender/take_shared → 调函数 → next_tx → end</code>。以你安装的 CLI 文档为准。</div>
+
+<h3>9.3 常见编译器报错解读</h3>
+<table>
+<tr><th>报错/提示</th><th>含义</th><th>修法</th></tr>
+<tr><td>value with unused ability</td><td>类型被标了用不到的能力</td><td>去掉多余 ability，或把泛型标 <code>phantom</code></td></tr>
+<tr><td>cannot drop/ignore resource</td><td>有 key 的对象在作用域末未处理</td><td>转移/删除/包裹该对象</td></tr>
+<tr><td>unbound function / module</td><td>函数/模块未导入或拼错</td><td>检查 <code>use</code>，确认包依赖</td></tr>
+<tr><td>entry function missing ctx</td><td>entry 函数需 <code>&mut TxContext</code></td><td>补上 ctx 参数</td></tr>
+<tr><td>type mismatch</td><td>实参与形参类型不符（含泛型 T）</td><td>核对 Coin&lt;T&gt; 等类型标签</td></tr>
+</table>
+
+<h2 id="s10">10. 安全与陷阱</h2>
+<table>
+<tr><th>陷阱</th><th>后果</th><th>防御</th></tr>
+<tr><td>资产对象误加 <code>copy/drop</code></td><td>可被复制或丢弃，价值归零</td><td>值对象只给 <code>key, store</code></td></tr>
+<tr><td>TreasuryCap 泄露</td><td>他人无限增发你的币</td><td>发布后立即转多签/销毁</td></tr>
+<tr><td>共享对象前端竞争 + gas 竞价</td><td>抢单被夹、交易被插队</td><td>设滑点/超时参数、用专属撮合合约</td></tr>
+<tr><td>升级后字段布局不兼容</td><td>旧对象读新代码崩溃</td><td>只追加字段、保留旧字段语义</td></tr>
+<tr><td>entry 参数注入对象替换</td><td>攻击者传入恶意对象绕过校验</td><td>校验对象来源、用 witness 绑定类型</td></tr>
+</table>
+<div class="warn"><b>entry 参数注入示例：</b>若你的 <code>buy</code> 只校验「price 相等」却没校验「payment 确实是 Coin&lt;SUI&gt;」，攻击者可能传入一个伪造的「假 SUI」对象。务必用真实类型标签与 witness 机制锁定资产类型。</div>
+<div class="note"><b>升级兼容口诀：</b>「能加不能减、能加函数不能改能力、字段只能往后挂」。发布前想清楚哪些字段未来要扩展，或干脆用动态字段（Table/Bag）承载可变数据。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 <code>sui move new</code> 建项目，写一个 <code>Counter</code> 独占对象模块并 <code>build/test/publish</code> 到 testnet。</li>
+<li>把 Counter 改成共享版，分别用 TS 调用，观察对象 owner 字段从 <code>AddressOwner</code> 变 <code>Shared</code>。</li>
+<li>发布一个自定义 Coin，mint 100 个给朋友，并用 <code>getBalance</code> 验证对方余额。</li>
+<li>完成 TipJar：部署后用两个地址演示「捐赠 + owner 提取」。</li>
+<li>完成 NFT 市场：发布后铸造 NFT→挂单→用 PTB 原子购买→取消，验证对象在地址间正确流转。</li>
+<li>为市场模块写 <code>test_scenario</code> 测试，覆盖 list/buy/cancel 三条路径。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能配好 Sui CLI、连 testnet、跑通 build/test/publish 全流程。</li>
+<li>能解释 module/use、四种 ability 及对资产的意义、对象三要素。</li>
+<li>能区分 transfer / public_transfer / share_object / freeze_object 的作用与归属。</li>
+<li>能说清 entry 与 public 的差异，以及为什么资产对象不能有 copy/drop。</li>
+<li>能讲出 Coin 标准的 OTW、TreasuryCap、create_currency 发币流程。</li>
+<li>能独立写出 Counter、共享计数、自定义币、TipJar、NFT 市场五个合约。</li>
+<li>能写出一个 test_scenario 多用户测试，并说出 3 个常见编译器报错含义。</li>
+<li>能列出至少 4 个 Move 合约安全陷阱及其防御手段。</li>
+</ul></div>
+
+<div class="pager"><a href="13-sui.html"><b>上一篇</b>← SUI 篇 I：概念与钱包开发</a><a class="next" href="15-sui-defi.html"><b>下一篇</b>SUI 篇 III：DeFi 与生态实战 →</a></div>
+</main></body></html>

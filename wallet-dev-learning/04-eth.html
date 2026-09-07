@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH 篇 I：概念与钱包开发</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html" class="cur">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">ETH 篇 I：概念与钱包开发</span><span class="chain chain-eth">ETH</span></header>
+<main class="doc">
+<h1>ETH 篇 I：概念与钱包开发</h1><p class="subtitle">读懂「世界计算机」的运行规则，并用 Node.js + ethers v6 从零写出一个能签名、能转账、能监听入账的钱包。主要参考：《精通以太坊 Mastering Ethereum》开源版 github.com/ethereumbook/ethereumbook、ethereum.org/developers、EIPs。</p>
+<div class="goals"><b>本章目标：</b>
+<ul style="margin-bottom:0">
+<li>建立以太坊全局状态、账户、EVM、Gas 与 PoS 的体系化心智模型</li>
+<li>理解 EIP-1559 费用机制、交易生命周期与 nonce 防重放原理</li>
+<li>能用 ethers v6 完成助记词 HD 派生、地址校验和与三种签名</li>
+<li>能发送 EIP-1559 转账并加速/取消交易、解析回执与事件</li>
+<li>能用 keystore 加密备份、用 Provider 监听入账，并选型 RPC 服务商</li>
+</ul></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 以太坊是什么：世界计算机与智能合约平台</a>
+<a href="#s2">2. 两类账户与全局状态</a>
+<a href="#s3">3. EVM、Gas 与 EIP-1559 费用机制</a>
+<a href="#s4">4. 交易生命周期、nonce 与最终性</a>
+<a href="#s5">5. 收据、事件日志与区块结构</a>
+<a href="#s6">6. 共识与分层：PoS 与 L2 概览</a>
+<a href="#s7">7. EIP-55 地址校验和</a>
+<a href="#s8">8. 钱包开发实战：环境与 HD 钱包</a>
+<a href="#s9">9. 三种签名：personal_sign / TypedData / SIWE</a>
+<a href="#s10">10. 发送 EIP-1559 转账与加速取消</a>
+<a href="#s11">11. 解析回执、keystore 与事件监听</a>
+<a href="#s12">12. RPC 服务商与生态工具对照</a>
+<a href="#s13">13. 钱包架构与 EIP-4337 账户抽象</a>
+</div>
+
+<h2 id="s1">1. 以太坊是什么：世界计算机与智能合约平台</h2>
+<p>比特币回答的问题是「没有银行也能记账」，而以太坊回答的是「没有中介也能运行程序」。以太坊是一个<strong>去中心化、图灵完备的状态机</strong>：全网节点按照确定性的规则，从同一个初始状态出发，逐块执行交易，最终达成一致的全局状态。这个状态机被形象地称为「世界计算机」（World Computer）。</p>
+
+<div class="note"><b>一句话区分：</b>比特币的脚本语言刻意做得非图灵完备，用来限制风险；以太坊则内置了图灵完备的虚拟机 EVM，让任何人都能部署「智能合约」（Smart Contract）——一段部署到链上、无人能单方面篡改、按代码自动执行的程序。</div>
+
+<p>以太坊的关键抽象有五个：</p>
+<table>
+<tr><th>抽象</th><th>作用</th><th>对比比特币</th></tr>
+<tr><td>账户 Account</td><td>状态的最小单元，含余额与（合约的）代码/存储</td><td>比特币只有 UTXO，无账户</td></tr>
+<tr><td>状态树 State Trie</td><td>用 MPT 把全账户组织成可验证哈希树</td><td>UTXO 集合，无统一状态根</td></tr>
+<tr><td>EVM</td><td>栈式虚拟机，执行合约字节码</td><td>Script 非图灵完备</td></tr>
+<tr><td>Gas</td><td>计量计算/存储成本，防止滥用与死循环</td><td>以「脚本大小/签名操作」粗略计费</td></tr>
+<tr><td>交易 Transaction</td><td>触发状态变更的消息（转账或调合约）</td><td>交易本质是 UTXO 的消费与创建</td></tr>
+</table>
+
+<p>「智能合约」一词源自 1990 年代 Nick Szabo 的设想，以太坊把它变成了现实：合约以 EVM 字节码形式存在，地址即其「身份证」，任何人都能向该地址发交易来调用它的函数。由于代码公开且全网重放执行，合约行为可审计、可组合（一个合约能调用另一个合约），这正是 DeFi「乐高」得以成立的基础。</p>
+
+<div class="quote">「以太坊不是来颠覆某家银行，而是来替换整个后台清算层。」——理解这句话，你就能理解为什么 DeFi、NFT、稳定币都先出现在以太坊上。</div>
+
+<h2 id="s2">2. 两类账户与全局状态</h2>
+<p>以太坊有两种账户，区别在于<strong>是否有代码</strong>：</p>
+<table>
+<tr><th>维度</th><th>外部账户 EOA（Externally Owned Account）</th><th>合约账户 Contract Account</th></tr>
+<tr><td>是否有私钥</td><td>有，由用户掌握</td><td>无，由代码控制</td></tr>
+<tr><td>能否发起交易</td><td>能（交易的源头）</td><td>不能，只能被交易或别的合约调用</td></tr>
+<tr><td>是否有代码</td><td>无，codeHash 为空</td><td>有，codeHash 指向代码哈希</td></tr>
+<tr><td>是否有存储</td><td>无，storageRoot 为空</td><td>有，storageRoot 指向存储树</td></tr>
+<tr><td>创建方式</td><td>由私钥生成地址，无需上链</td><td>由 EOA 发交易（CREATE/CREATE2）部署</td></tr>
+<tr><td>地址来源</td><td>公钥 Keccak256 取后 20 字节</td><td>部署者地址+nonce 哈希 / CREATE2 公式</td></tr>
+</table>
+
+<div class="tip"><b>常见误区：</b>「钱包」在以太坊里并不是一个链上实体，而是一组密钥 + 一个 EOA 地址的本地管理工具。所谓「钱包余额」就是该 EOA 的 <code>balance</code> 字段；所谓「代币余额」其实存在某个 ERC20 合约的存储里，只是按你的地址做索引。</div>
+
+<h3>2.1 全局状态与存储树（MPT 概念）</h3>
+<p>以太坊在每个区块头保存三个根哈希，构成「世界状态」的可验证指纹：</p>
+<ul>
+<li><b>stateRoot</b>：所有账户组成的 Merkle Patricia Trie（MPT）根。账户字段（nonce/balance/storageRoot/codeHash）被序列化后存入。</li>
+<li><b>storageRoot</b>：合约内部存储（slot → value 的键值对）各自的 MPT 根。每个合约拥有一棵独立存储树。</li>
+<li><b>transactionsRoot / receiptsRoot</b>：本区块交易与回执各自的 MPT 根。</li>
+</ul>
+<p>MPT 同时具备「前缀压缩树」与「默克尔树」的特性：既能高效检索键值，又能用一条 Merkle 证明（几个哈希）向轻客户端证明「某地址的余额确实是 X」。这正是轻钱包无需下载全量数据也能验证状态的原因。</p>
+
+<div class="note"><b>直觉理解：</b>把 stateRoot 想象成整本账本的「指纹」。任意一处账户余额改动，stateRoot 都会变；你只要相信区块头里的 stateRoot，再拿到一条 Merkle 证明，就能确认某条具体状态，而不必相信某个中心化服务器。</div>
+
+<h2 id="s3">3. EVM、Gas 与 EIP-1559 费用机制</h2>
+<h3>3.1 EVM：栈式虚拟机与 opcode</h3>
+<p>EVM 是一个<strong>基于栈（stack-based）</strong>的虚拟机，不是基于寄存器的。它有一个 1024 深的栈、临时内存（memory，易失）和持久存储（storage，按合约持久化、极贵）。合约源码（Solidity）被编译为 opcode 字节码，例如：</p>
+<table>
+<tr><th>opcode</th><th>含义</th><th>基础 Gas</th></tr>
+<tr><td>ADD</td><td>栈顶两数相加</td><td>3</td></tr>
+<tr><td>MSTORE</td><td>写入内存</td><td>3</td></tr>
+<tr><td>SSTORE</td><td>写入存储（新值）</td><td>最多 20000（冷）/5000（热）</td></tr>
+<tr><td>SLOAD</td><td>读取存储</td><td>100（热）/2100（冷）</td></tr>
+<tr><td>CALL</td><td>调用另一合约</td><td>至少 100 + 被调消耗</td></tr>
+<tr><td>SHA3 (KECCAK256)</td><td>哈希</td><td>30 + 每字 6</td></tr>
+</table>
+<p>EVM 是确定性的：同一笔交易在任意全节点上执行，结果（含 Gas 消耗）必须完全一致，否则节点无法达成共识。这也意味着合约里<strong>不能</strong>使用随机数、系统时间等不确定来源，只能使用区块内的确定字段（如 <code>block.timestamp</code>、<code>block.number</code>、<code>blockhash</code>）。</p>
+
+<h3>3.2 Gas 机制三件套</h3>
+<ul>
+<li><b>gasLimit</b>：你愿意为这笔交易最多消耗的 Gas 量（防死循环）。EVM 跑完若超量即回滚，但已耗 Gas 不退。</li>
+<li><b>gasUsed</b>：交易实际消耗的 Gas。未用完的部分（gasLimit - gasUsed）× 单价会退回。</li>
+<li><b>Gas 单价（price）</b>：每单位 Gas 付多少 ETH。在 EIP-1559 前后算法不同（见下）。</li>
+</ul>
+
+<h3>3.3 EIP-1559：base fee 销毁 + priority fee</h3>
+<p>2021 年伦敦硬分叉引入 EIP-1559，把「单一 Gas 价格」拆成两块：</p>
+<table>
+<tr><th>字段</th><th>含义</th><th>归属</th></tr>
+<tr><td>baseFeePerGas</td><td>由协议按上一区块利用率自动调节（满则升、空则降，目标 50% 利用率）</td><td>被<strong>销毁</strong>（burn），不归矿工/验证者</td></tr>
+<tr><td>maxPriorityFeePerGas</td><td>你额外给验证者的「小费」，用于插队</td><td>归打包该块的验证者</td></tr>
+<tr><td>maxFeePerGas</td><td>你愿意支付的总单价上限</td><td>baseFee + priority 实际取小</td></tr>
+</table>
+<p>实付单价 = <code>min(maxFeePerGas, baseFeePerGas + maxPriorityFeePerGas)</code>。由于 baseFee 被销毁，ETH 在高负载时会出现通缩压力，这是 EIP-1559 的宏观外溢效应。</p>
+
+<h3>3.4 Legacy 交易 vs EIP-1559 交易对照</h3>
+<table>
+<tr><th>字段</th><th>Legacy（类型 0）</th><th>EIP-1559（类型 2）</th></tr>
+<tr><td>gasPrice</td><td>单一单价</td><td>—</td></tr>
+<tr><td>maxFeePerGas</td><td>—</td><td>有</td></tr>
+<tr><td>maxPriorityFeePerGas</td><td>—</td><td>有</td></tr>
+<tr><td>type 字节</td><td>无前缀（0x 起）</td><td>0x02 前缀</td></tr>
+<tr><td>费用去向</td><td>全部给矿工</td><td>baseFee 销毁 + 小费给验证者</td></tr>
+</table>
+<div class="tip"><b>钱包开发建议：</b>现代钱包默认构造 EIP-1559 交易（type 2），并用 <code>eth_feeHistory</code> 估算 baseFee，配合一个合理的 priority 即可。仅在与老旧设施兼容时才回退 legacy。</div>
+
+<h2 id="s4">4. 交易生命周期、nonce 与最终性</h2>
+<h3>4.1 交易生命周期</h3>
+<ol>
+<li><b>签名</b>：EOA 用私钥对交易哈希签名（含 chainId 防重放）。</li>
+<li><b>广播 / mempool</b>：交易进入节点的待打包内存池（mempool），公开可见。</li>
+<li><b>打包</b>：验证者选中交易放进区块，执行并消耗 Gas。</li>
+<li><b>确认</b>：区块上链，交易获得第 1 个确认。</li>
+<li><b>最终性（finality）</b>：PoS 下经若干 epoch 后区块被标记为 justified / finalized，几乎不可回滚。</li>
+</ol>
+
+<h3>4.2 nonce 与 EIP-155 链 ID 防重放</h3>
+<p>每个 EOA 有一个从 0 递增的 <code>nonce</code>，代表「已发出的交易数」。节点只接受 <code>nonce == 当前账户 nonce</code> 的交易，且必须按序执行——这保证了「同一笔交易不会被重复执行两次」。</p>
+<div class="note"><b>EIP-155：</b>早期以太坊没有链 ID 概念，导致在 ETH 上签的交易可被重放到 ETC（分叉链）。EIP-155 把 <code>chainId</code> 纳入签名摘要，使签名绑定到特定链。Sepolia 测试网 chainId = 11155111，主网 = 1。</div>
+
+<h3>4.3 PoS 最终性：slot / epoch / justified / finalized</h3>
+<table>
+<tr><th>概念</th><th>时长</th><th>含义</th></tr>
+<tr><td>slot</td><td>12 秒</td><td>一个验证者被随机选中进行出块的机会窗口</td></tr>
+<tr><td>epoch</td><td>32 slots = 6.4 分钟</td><td>最终性投票的结算单位</td></tr>
+<tr><td>justified</td><td>—</td><td>超过 2/3 验证者投票认可的检查点</td></tr>
+<tr><td>finalized</td><td>—</td><td>已被一个 justified 检查点「背书」的检查点，视为不可逆</td></tr>
+</table>
+<p>实践上，钱包通常把「12 个区块确认 / 约 2-3 分钟」作为足够安全的阈值；涉及大额则等 finalized（2 个 epoch ≈ 12.8 分钟）。</p>
+
+<h2 id="s5">5. 收据、事件日志与区块结构</h2>
+<h3>5.1 收据与事件日志</h3>
+<p>交易执行后产生<strong>收据（Receipt）</strong>，包含：状态回执码（成功/失败）、实际 gasUsed、以及本次交易发出的<strong>日志（logs）</strong>。日志就是合约里 <code>emit 事件</code> 产生的数据，结构为 <code>[address, topics[], data]</code>：</p>
+<ul>
+<li><code>address</code>：发出事件的合约。</li>
+<li><code>topics[0]</code>：事件签名的 Keccak256 哈希，用于筛选。</li>
+<li><code>topics[1..]</code>：被标记为 <code>indexed</code> 的参数（最多 3 个），可精确过滤。</li>
+<li><code>data</code>：未被 indexed 的参数（ABI 编码的字节，不可直接过滤但可解码）。</li>
+</ul>
+
+<h3>5.2 Bloom 过滤器</h3>
+<p>每个区块头含一个 2048 位的 <code>logsBloom</code>。节点先用 Bloom 过滤器快速「粗筛」某事件/某地址是否可能出现在该块；若命中再精查日志。这让轻客户端高效订阅事件成为可能，代价是 Bloom 可能误报（但不会漏报）。</p>
+
+<h3>5.3 区块结构</h3>
+<table>
+<tr><th>区块头字段</th><th>含义</th></tr>
+<tr><td>parentHash</td><td>父块哈希，串成链</td></tr>
+<tr><td>stateRoot</td><td>执行后状态树根</td></tr>
+<tr><td>transactionsRoot</td><td>交易树根</td></tr>
+<tr><td>receiptsRoot</td><td>回执树根</td></tr>
+<tr><td>logsBloom</td><td>事件 Bloom 过滤器</td></tr>
+<tr><td>baseFeePerGas</td><td>本块 EIP-1559 base fee</td></tr>
+<tr><td>timestamp / number</td><td>出块时间与高度</td></tr>
+</table>
+
+<h2 id="s6">6. 共识与分层：PoS 与 L2 概览</h2>
+<h3>6.1 PoS 简述</h3>
+<p>以太坊于 2022 年「合并（The Merge）」后由 PoW 转为<strong>权益证明（PoS）</strong>：</p>
+<ul>
+<li><b>验证者（Validator）</b>：质押 <strong>32 ETH</strong> 即可运行节点参与出块与投票。</li>
+<li><b>罚没（Slashing）</b>：若验证者作恶（双签、长期离线），会被罚没部分乃至全部质押，并强制退出。</li>
+<li>普通用户可用 Lido 等做流动性质押，低于 32 ETH 也能参与。</li>
+</ul>
+
+<h3>6.2 L2 概览：Optimistic vs ZK Rollup</h3>
+<p>主网（L1）昂贵且慢，L2 把大量交易在链下执行、只把<strong>压缩后的数据 + 证明</strong>提交回 L1，从而继承 L1 安全性又大幅降本。两大路线：</p>
+<table>
+<tr><th>维度</th><th>Optimistic Rollup</th><th>ZK Rollup</th></tr>
+<tr><td>安全性假设</td><td>欺诈证明：默认诚实，挑战期（约 7 天）内可被质疑</td><td>有效性证明：每批都附带零知识证明，数学保证正确</td></tr>
+<tr><td>提款到 L1</td><td>需等待挑战期（慢）</td><td>证明验证通过即可（快）</td></tr>
+<tr><td>EVM 兼容</td><td>高（几乎原生 EVM）</td><td>早期弱，现多有 zkEVM</td></tr>
+<tr><td>代表</td><td>Arbitrum、OP Mainnet（Optimism）、Base</td><td>zkSync Era、Starknet、Linea、Scroll</td></tr>
+<tr><td>开发体验</td><td>合约可直接搬（同 Solidity）</td><td>多数兼容 Solidity，个别需特定编译器</td></tr>
+</table>
+<div class="tip"><b>钱包开发提示：</b>钱包只要把 RPC 指向 L2 的 endpoint（如 Base 的 chainId=8453），其余 ethers 调用与主网完全一致——以太坊的账户/交易模型在 L2 上复用。跨 L1/L2 的「桥」才是复杂点。</div>
+
+<h2 id="s7">7. EIP-55 地址校验和</h2>
+<p>以太坊地址是 20 字节（40 个十六进制字符）。裸地址大小写不敏感，但 <strong>EIP-55</strong> 用 Keccak256 对地址做哈希，按哈希结果把某些字符转为大写，形成「校验和地址」。若用户输入时写错一位，校验和几乎必然不匹配，从而能拦截常见拷贝错误。</p>
+<table>
+<tr><th>形式</th><th>示例（前若干位）</th><th>用途</th></tr>
+<tr><td>全小写</td><td>0x5aae6b2b...（无校验）</td><td>不推荐，无法检错</td></tr>
+<tr><td>EIP-55 混合大小写</td><td>0x5AAE6b2b...（可校验）</td><td>UI 展示、人工核对</td></tr>
+</table>
+<div class="warn"><b>注意：</b>链上比较地址时一律按小写（无校验和）处理；EIP-55 只对「展示与人工输入」有意义，发送交易不会因为大小写而失败或成功。</div>
+
+<h2 id="s8">8. 钱包开发实战：环境与 HD 钱包</h2>
+<h3>8.1 准备环境</h3>
+<p>本篇代码基于 <strong>Node.js ≥ 18</strong> 与 <strong>ethers v6</strong>。初始化项目并安装依赖：</p>
+<pre><code># 初始化项目
+npm init -y
+
+# 安装 ethers v6（注意 v6 与 v5 API 差异较大，本文全部用 v6）
+npm install ethers@6
+
+# 还需要 dotenv 管理私钥/助记词（切勿硬编码进代码仓库）
+npm install dotenv
+</code></pre>
+<p>在项目根目录创建 <code>.env</code>（并加入 <code>.gitignore</code>）：</p>
+<pre><code># .env —— 仅本地，绝不上传
+MNEMONIC="test test test test test test test test test test test junk"
+SEPOLIA_RPC="https://rpc.sepolia.org"
+ETHERSCAN_API_KEY="你的key"
+</code></pre>
+
+<h3>8.2 HD 钱包派生（BIP-39 + BIP-44）</h3>
+<p>以太坊钱包通常遵循 <strong>BIP-39（助记词→种子）</strong>与 <strong>BIP-44（分层路径）</strong>。标准以太坊路径为 <code>m/44'/60'/0'/0/0</code>：</p>
+<table>
+<tr><th>段</th><th>含义</th></tr>
+<tr><td>m</td><td>主节点</td></tr>
+<tr><td>44'</td><td>用途（BIP-44）</td></tr>
+<tr><td>60'</td><td>币种（60 = ETH，SLIP-44 编号）</td></tr>
+<tr><td>0'</td><td>账户索引</td></tr>
+<tr><td>0</td><td>找零链（0=外部地址，1=内部找零）</td></tr>
+<tr><td>0</td><td>地址索引（第 0 个地址）</td></tr>
+</table>
+<p>完整派生代码：</p>
+<pre><code>// hd-wallet.js
+// 用助记词派生出第 0 个以太坊地址，与 MetaMask 默认账户一致
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const MNEMONIC = process.env.MNEMONIC;
+
+// 1) 从助记词得到 BIP-39 种子（64 字节）
+const seed = ethers.Mnemonic.fromPhrase(MNEMONIC).computeSeed();
+
+// 2) 构造 HD 节点，沿 BIP-44 以太坊路径派生
+//    ethers v6 的 HDNode 直接支持 path 派生
+const path = "m/44'/60'/0'/0/0";
+const hdNode = ethers.HDNodeWallet.fromPhrase(MNEMONIC, undefined, path);
+
+console.log("派生路径:", hdNode.path);
+console.log("私钥:", hdNode.privateKey);
+console.log("地址(EIP-55):", hdNode.address);
+console.log("地址(小写):", hdNode.address.toLowerCase());
+
+// 3) 一次性派生同一助记词下的多个地址（账户浏览）
+const base = ethers.HDNodeWallet.fromPhrase(MNEMONIC);
+for (let i = 0; i < 3; i++) {
+  const w = base.derivePath(`m/44'/60'/0'/0/${i}`);
+  console.log(`地址[${i}]:`, w.address);
+}
+</code></pre>
+<div class="tip"><b>验证：</b>用上面的测试助记词（BIP-39 标准测试向量），派生出的第 0 地址应为 <code>0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2E0d3C9e0</code> 的对应值；可与 MetaMask / ganache 对照。生产环境务必替换为随机生成的助记词。</div>
+
+<h3>8.3 地址 checksum 编解码</h3>
+<p>手动实现 EIP-55 校验和，理解其本质：</p>
+<pre><code>// checksum.js
+// 手写 EIP-55 校验和，等价于 ethers.getAddress()
+import { ethers } from "ethers";
+
+function toChecksumAddress(addr) {
+  // 去掉 0x 并转小写
+  const lower = addr.replace(/^0x/i, "").toLowerCase();
+  if (lower.length !== 40) throw new Error("地址长度必须为 20 字节");
+
+  // 对小写地址做 Keccak256，得到哈希的十六进制字符串
+  const hash = ethers.keccak256(ethers.toUtf8Bytes(lower)).slice(2);
+
+  let out = "0x";
+  for (let i = 0; i < 40; i++) {
+    const ch = lower[i];
+    // 字母 a-f 才可能被大写；数字保持原样
+    if (/[a-f]/.test(ch)) {
+      // 哈希对应 nibble >= 8 则大写
+      const nibble = parseInt(hash[i], 16);
+      out += nibble >= 8 ? ch.toUpperCase() : ch;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+// 校验：传入混合大小写地址，校验是否合法
+function verifyChecksum(addr) {
+  return toChecksumAddress(addr) === addr;
+}
+
+const a = "0x5aaeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0";
+const c = toChecksumAddress(a);
+console.log("小写:", a);
+console.log("校验和:", c);
+console.log("校验通过:", verifyChecksum(c));
+// ethers 自带等价方法
+console.log("ethers.getAddress:", ethers.getAddress(a) === c);
+</code></pre>
+
+<h3>8.4 连接 Sepolia 测试网与领水</h3>
+<p>测试网可以免费领测试币，无需真实资金：</p>
+<table>
+<tr><th>水龙头</th><th>地址</th><th>说明</th></tr>
+<tr><td>Chainlink faucet</td><td>faucets.chain.link</td><td>需登录，支持 Sepolia ETH 与 LINK</td></tr>
+<tr><td>Sepolia PoW</td><td>sepoliafaucet.com</td><td>做一点 PoW 领水</td></tr>
+<tr><td>Alchemy faucet</td><td>faucets.alchemy.com</td><td>注册 Alchemy 后使用</td></tr>
+</table>
+<pre><code>// connect.js
+// 创建 Provider 并读取账户余额
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const RPC = process.env.SEPOLIA_RPC;        // 例如 "https://rpc.sepolia.org"
+const provider = new ethers.JsonRpcProvider(RPC);
+
+// 查询链 ID 与最新区块，确认连通
+const net = await provider.getNetwork();
+const block = await provider.getBlock("latest");
+console.log("chainId:", net.chainId, "name:", net.name);
+console.log("最新高度:", block.number, "baseFee:", block.baseFeePerGas?.toString());
+
+const address = "0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0";
+const bal = await provider.getBalance(address);
+console.log("余额(wei):", bal.toString());
+console.log("余额(eth):", ethers.formatEther(bal));
+</code></pre>
+
+<h2 id="s9">9. 三种签名：personal_sign / TypedData / SIWE</h2>
+<h3>9.1 EIP-191 personal_sign（裸签名）</h3>
+<p><code>personal_sign</code> 在消息前加 <code>\x19Ethereum Signed Message:\n</code> 固定前缀再哈希，避免「用交易签名私钥去签一段恶意交易字节」的误用。适合登录、对消息背书。</p>
+<pre><code>// sign-personal.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0");
+
+// 1) 对一段文本签名
+const message = "登录 tutorial-dapp，时间 2025-01-01";
+const signature = await wallet.signMessage(message);
+console.log("签名:", signature);
+
+// 2) 恢复签名者地址，验证确实由该钱包签署
+const recovered = ethers.verifyMessage(message, signature);
+console.log("恢复地址:", recovered);
+console.log("匹配:", recovered === wallet.address);
+
+// 3) 底层原理：personal_sign 实际签名的是带前缀的哈希
+const prefixed = ethers.hashMessage(message); // 即 keccak256("\x19Ethereum Signed Message:\n" + len + msg)
+console.log("消息哈希(EIP-191):", prefixed);
+</code></pre>
+
+<h3>9.2 EIP-712 eth_signTypedData_v4（结构化签名）</h3>
+<p>裸签名对人类不可读、易误签。EIP-712 让你签名<strong>结构化、带类型的对象</strong>，钱包会显示可读字段。完整四要素：<code>domain</code>（防跨域/跨合约）、<code>types</code>（结构定义）、<code>message</code>/<code>value</code>（具体数据）、<code>primaryType</code>。</p>
+<pre><code>// sign-typeddata.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0");
+
+// 1) 定义 domain：把签名绑定到具体 dApp 与链，防重放/误用
+const domain = {
+  name: "Tutorial DApp",
+  version: "1",
+  chainId: 11155111,            // Sepolia
+  verifyingContract: "0x0000000000000000000000000000000000000000",
+};
+
+// 2) 定义类型（注意 EIP-712 需要 EIP712Domain 与 Mail 两套结构）
+const types = {
+  EIP712Domain: [
+    { name: "name", type: "string" },
+    { name: "version", type: "string" },
+    { name: "chainId", type: "uint256" },
+    { name: "verifyingContract", type: "address" },
+  ],
+  Order: [
+    { name: "maker", type: "address" },
+    { name: "taker", type: "address" },
+    { name: "token", type: "address" },
+    { name: "amount", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+};
+
+// 3) 具体要签的 value
+const value = {
+  maker: wallet.address,
+  taker: "0x0000000000000000000000000000000000000000",
+  token: "0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0",
+  amount: ethers.parseUnits("100", 18),
+  deadline: 1735689600,
+};
+
+// 4) 签名（ethers v6 的 signTypedData）
+const signature = await wallet.signTypedData(domain, types, value);
+console.log("EIP-712 签名:", signature);
+
+// 5) 验证：恢复签名者，合约侧也可用 ecrecover 同样恢复
+const recovered = ethers.verifyTypedData(domain, types, value, signature);
+console.log("恢复地址:", recovered, "匹配:", recovered === wallet.address);
+
+// 6) 计算结构化数据的 digest（合约端 ecrecover 用的哈希）
+const digest = ethers.TypedDataEncoder.hash(domain, types, value);
+console.log("结构化哈希:", digest);
+</code></pre>
+<div class="note"><b>合约端对应：</b>在 Solidity 里用 <code>ECDSA.recover(_hashTypedDataV4(digest), sig)</code> 即可恢复 signer。digest = <code>keccak256(abi.encodePacked("\x19\x01", hash(domain), hash(struct)))</code>，ethers 的 <code>TypedDataEncoder.hash</code> 与之完全一致。</div>
+
+<h3>9.3 EIP-4361 SIWE（Sign-In with Ethereum）</h3>
+<p>SIWE 把「登录」标准化为一条可读的 EIP-712 消息（RFC 风格的明文 + 结构化字段），用于 Web2 风格的会话鉴权，而不必自建账号体系。</p>
+<pre><code>// siwe.js
+// 构造并签名一个 SIWE 消息（简化版，生产请用 siwe 库）
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0");
+
+// SIWE 消息是一段结构化纯文本，字段由 EIP-4361 规定
+const domain = "tutorial-dapp.example";
+const address = wallet.address;
+const statement = "登录 Tutorial DApp，仔细阅读不要授权任何交易。";
+const uri = "https://tutorial-dapp.example/login";
+const version = "1";
+const chainId = 11155111;
+const nonce = "abc123def456";          // 必须由服务端下发，防重放
+const issuedAt = new Date().toISOString();
+
+const message = [
+  `${domain} 想让你用你的以太坊账户登录。`,
+  ``,
+  `URI: ${uri}`,
+  `版本: ${version}`,
+  `链 ID: ${chainId}`,
+  `地址: ${address}`,
+  ``,
+  `说明: ${statement}`,
+  ``,
+  `随机数: ${nonce}`,
+  `签发时间: ${issuedAt}`,
+].join("\n");
+
+const signature = await wallet.signMessage(message);
+console.log("SIWE 消息:\n" + message);
+console.log("签名:", signature);
+console.log("服务端应保存 nonce 与 signature，后续用 verifyMessage 校验。");
+</code></pre>
+<div class="tip"><b>最佳实践：</b>生产环境直接 <code>npm install siwe</code>，用 <code>new SiweMessage(...).prepareMessage()</code> 与 <code>verify({ signature, nonce })</code>，避免手拼格式出错。</div>
+
+<h2 id="s10">10. 发送 EIP-1559 转账与加速取消</h2>
+<h3>10.1 估算费用并发送转账</h3>
+<pre><code>// send-1559.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider); // 也可 fromPhrase
+
+// 1) 用 eth_feeHistory 估算最近的 base fee 走势
+const feeData = await provider.getFeeData();
+console.log("maxFeePerGas:", feeData.maxFeePerGas?.toString());
+console.log("maxPriorityFeePerGas:", feeData.maxPriorityFeePerGas?.toString());
+
+// 2) 手动设置：小费 2 gwei，总上限取 baseFee*1.5 + 小费（更稳）
+const block = await provider.getBlock("latest");
+const baseFee = block.baseFeePerGas;
+const priority = ethers.parseUnits("2", "gwei");
+const maxFee = baseFee * 3n / 2n + priority;
+
+// 3) 构造 EIP-1559 转账交易（type 2）
+const tx = {
+  type: 2,
+  to: "0x0000000000000000000000000000000000000000", // 测试：转给 0 地址
+  value: ethers.parseEther("0.001"),
+  maxFeePerGas: maxFee,
+  maxPriorityFeePerGas: priority,
+  // gasLimit 可省略，ethers 会自动估算；此处显式给出
+  gasLimit: 21000,
+  chainId: 11155111,
+};
+
+console.log("广播中... nonce =", await wallet.getNonce());
+const sent = await wallet.sendTransaction(tx);
+console.log("交易哈希:", sent.hash);
+
+// 4) 等待上链并拿到回执
+const receipt = await sent.wait();
+console.log("区块高度:", receipt.blockNumber, "实际 gasUsed:", receipt.gasUsed.toString());
+console.log("状态:", receipt.status === 1 ? "成功" : "失败");
+</code></pre>
+
+<h3>10.2 交易加速（Replace-by-Fee）与取消</h3>
+<p>若交易长时间未打包（mempool 拥堵），可用<strong>同一 nonce、更高 priority fee</strong> 重发一笔交易来「插队」；若要取消，则向自己转 0 值、同样提费。原理：节点看到同 nonce 的新交易会替换旧的。</p>
+<pre><code>// replace-tx.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+
+// 场景：之前发的交易卡住了（已知其 nonce 与哈希）
+const stuckNonce = await wallet.getNonce("latest"); // 假设卡在 latest nonce
+
+const block = await provider.getBlock("latest");
+const baseFee = block.baseFeePerGas;
+// 加速：小费给到原来的 ~2 倍，确保优先打包
+const priority = ethers.parseUnits("4", "gwei");
+const maxFee = baseFee * 2n + priority;
+
+// 加速：发一笔真实转账，同 nonce、更高费用
+const speedUp = await wallet.sendTransaction({
+  type: 2,
+  to: "0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0",
+  value: ethers.parseEther("0.001"),
+  nonce: stuckNonce,
+  maxFeePerGas: maxFee,
+  maxPriorityFeePerGas: priority,
+  gasLimit: 21000,
+});
+
+// 取消：向自己转 0，同 nonce、更高费用，原交易将被挤出 mempool
+const cancel = await wallet.sendTransaction({
+  type: 2,
+  to: wallet.address,
+  value: 0n,
+  nonce: stuckNonce,
+  maxFeePerGas: maxFee * 2n / 3n + priority,
+  maxPriorityFeePerGas: priority,
+  gasLimit: 21000,
+});
+
+console.log("加速交易:", speedUp.hash);
+console.log("取消交易:", cancel.hash, "（两者同 nonce，谁先上链另一个即失效）");
+</code></pre>
+<div class="warn"><b>坑：</b>替换交易的费用必须「严格更高」（EIP-1559 要求新 maxPriorityFeePerGas ≥ 旧值 + 1，且 maxFeePerGas ≥ 旧值）。否则节点会拒绝替换。务必先记录原 nonce。</div>
+
+<h2 id="s11">11. 解析回执、keystore 与事件监听</h2>
+<h3>11.1 读取与解析交易回执 / 事件</h3>
+<pre><code>// parse-receipt.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const txHash = "0x你的交易哈希";
+
+const receipt = await provider.getTransactionReceipt(txHash);
+console.log("状态:", receipt.status, "gasUsed:", receipt.gasUsued?.toString() ?? receipt.gasUsed.toString());
+console.log("Logs 数量:", receipt.logs.length);
+
+// 解析某个 ERC20 Transfer 事件（需 ABI 片段）
+const erc20Abi = [
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+];
+const iface = new ethers.Interface(erc20Abi);
+
+for (const log of receipt.logs) {
+  try {
+    const parsed = iface.parseLog(log);
+    if (parsed.name === "Transfer") {
+      console.log("from:", parsed.args.from);
+      console.log("to:", parsed.args.to);
+      console.log("value:", parsed.args.value.toString());
+    }
+  } catch (e) {
+    // 非 Transfer 事件，忽略
+  }
+}
+</code></pre>
+
+<h3>11.2 keystore JSON 加密导出与导入</h3>
+<p>keystore 是把私钥用密码（scrypt/kdf）加密后的 JSON 文件，可安全备份到磁盘/云。ethers 提供 <code>Wallet.encrypt</code> 与 <code>fromEncryptedJson</code>。</p>
+<pre><code>// keystore.js
+import { ethers } from "ethers";
+import { writeFileSync, readFileSync } from "fs";
+
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0");
+const password = "你的强密码";
+
+// 1) 导出加密 keystore
+const json = await wallet.encrypt(password);
+writeFileSync("keystore.json", json);
+console.log("已导出 keystore.json（可离线保存）");
+
+// 2) 用密码导入还原钱包
+const data = readFileSync("keystore.json", "utf8");
+const restored = await ethers.Wallet.fromEncryptedJson(data, password);
+console.log("还原地址:", restored.address, "一致:", restored.address === wallet.address);
+
+// 3) 危险演示：从明文私钥直接构造（仅测试，生产严禁硬编码私钥）
+const fromPk = new ethers.Wallet(wallet.privateKey);
+console.log("私钥还原地址:", fromPk.address);
+</code></pre>
+<div class="warn"><b>安全红线：</b>私钥/助记词永远不要出现在日志、截图、聊天、代码仓库。keystore 的密码也要强且独立。前端（浏览器）里尽量用 <code>window.ethereum</code>（钱包注入）而非持有私钥。</div>
+
+<h3>11.3 JsonRpcProvider + 监听入账</h3>
+<pre><code>// listen.js
+import { ethers } from "ethers";
+import "dotenv/config";
+
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
+const myAddress = "0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0";
+
+// 监听该地址的入账（pending 为内存池未确认，也可监听 'block'）
+console.log("监听", myAddress, "的入账...");
+provider.on(myAddress, (tx) => {
+  console.log("收到交易:", tx.hash, "金额:", ethers.formatEther(tx.value), "ETH");
+});
+
+// 监听新区块
+provider.on("block", (n) => console.log("新区块:", n));
+
+// 监听指定合约事件（例如某 ERC20 的 Transfer 到本地址）
+const erc20 = new ethers.Contract(
+  "0x代币地址",
+  ["event Transfer(address indexed from, address indexed to, uint256 value)"],
+  provider
+);
+erc20.on("Transfer", (from, to, value) => {
+  if (to.toLowerCase() === myAddress.toLowerCase()) {
+    console.log("收到代币:", value.toString(), "来自:", from);
+  }
+});
+</code></pre>
+
+<h3>11.4 Etherscan API 查交易历史</h3>
+<pre><code>// etherscan-history.js
+import { ethers } from "ethers";
+
+const API_KEY = "你的EtherscanKey";
+const addr = "0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2e0d3c9e0";
+
+// Etherscan V2 API：按地址拉取普通交易列表
+const url = `https://api.etherscan.io/v2/api?chainid=11155111&module=account&action=txlist&address=${addr}&startblock=0&endblock=99999999&page=1&offset=10&sort=desc&apikey=${API_KEY}`;
+const res = await fetch(url);
+const json = await res.json();
+if (json.status === "1") {
+  for (const tx of json.result) {
+    console.log(tx.hash, "from", tx.from, "to", tx.to, "value", tx.value);
+  }
+} else {
+  console.log("查询失败:", json.message);
+}
+</code></pre>
+
+<h2 id="s12">12. RPC 服务商与生态工具对照</h2>
+<h3>12.1 常见 RPC 服务商对照</h3>
+<table>
+<tr><th>服务商</th><th>特点</th><th>免费额度</th><th>适用</th></tr>
+<tr><td>Infura</td><td>老牌，稳定，需 API Key</td><td>有，限速</td><td>生产/学习</td></tr>
+<tr><td>Alchemy</td><td>增强 API（NFT/转账/Webhook）</td><td>有， generous</td><td>dApp 后端</td></tr>
+<tr><td>QuickNode</td><td>多链、低延迟</td><td>有</td><td>多链</td></tr>
+<tr><td>公共 RPC（rpc.sepolia.org）</td><td>无需 Key，但限速/易宕</td><td>免费</td><td>测试</td></tr>
+<tr><td>自己的节点</td><td>最去中心化，需运维</td><td>自托管</td><td>重负载</td></tr>
+</table>
+
+<h3>12.2 viem 与 ethers 对照简表</h3>
+<table>
+<tr><th>能力</th><th>ethers v6</th><th>viem（替代库）</th></tr>
+<tr><td>Provider</td><td><code>new JsonRpcProvider(url)</code></td><td><code>createPublicClient({ transport: http(url) })</code></td></tr>
+<tr><td>Wallet/Account</td><td><code>new Wallet(pk, provider)</code></td><td><code>privateKeyToAccount(pk)</code></td></tr>
+<tr><td>发交易</td><td><code>wallet.sendTransaction(tx)</code></td><td><code>walletClient.sendTransaction(tx)</code></td></tr>
+<tr><td>合约</td><td><code>new Contract(addr, abi, signer)</code></td><td><code>getContract({ address, abi, client })</code></td></tr>
+<tr><td>类型</td><td>自带 BigNumber（bigint）</td><td>基于原生 bigint + ABI 类型推断</td></tr>
+<tr><td>风格</td><td>OOP，较易上手</td><td>函数式，tree-shaking 友好</td></tr>
+</table>
+<div class="tip"><b>选型：</b>ethers v6 生态成熟、文档多，适合入门与本文示例；viem 体积更小、类型更安全，适合追求性能的现代 dApp。两者底层都连同一套 JSON-RPC。</div>
+
+<h2 id="s13">13. 钱包架构与 EIP-4337 账户抽象</h2>
+<p>前面我们用的都是「EOA + 本地私钥」的传统钱包。现实中还有更多形态，理解它们有助于你设计产品形态：</p>
+<table>
+<tr><th>钱包类型</th><th>私钥位置</th><th>特点 / 风险</th></tr>
+<tr><td>热钱包（软件）</td><td>联网设备</td><td>方便，易被木马/钓鱼窃取；MetaMask 属此类</td></tr>
+<tr><td>冷钱包（硬件）</td><td>离线硬件（Ledger/Trezor）</td><td>私钥永不触网，签名在设备上完成，最安全</td></tr>
+<tr><td>观察钱包（watch-only）</td><td>无私钥</td><td>只读取余额/历史，用于监控</td></tr>
+<tr><td>多签钱包</td><td>分散在多人/多设备</td><td>需 M-of-N 签名才动款，企业金库常用</td></tr>
+<tr><td>智能合约钱包</td><td>合约代码控制</td><td>支持社交恢复、限额、批量交易（见下）</td></tr>
+</table>
+
+<h3>13.1 EIP-4337：把「账户」变成合约</h3>
+<p>原生以太坊的 EOA 有两大痛点：① 必须持有 ETH 付 Gas；② 私钥丢失即资产永久丢失。EIP-4337「账户抽象（Account Abstraction）」不改动共识层，而是引入一套<strong>去中心化基础设施</strong>，让「账户」本身可以是合约：</p>
+<ul>
+<li><b>UserOperation</b>：一种「伪交易」结构，描述「我想做什么」，而非传统签名交易。</li>
+<li><b>Bundler（打包器）</b>：把多个 UserOp 聚合成一笔真实交易发上链，并垫付 Gas。</li>
+<li><b>EntryPoint</b>：全网共享的 singleton 合约，统一校验并执行 UserOp。</li>
+<li><b>Paymaster（代付者）</b>：替用户代付 Gas，甚至允许用 ERC20 付手续费——实现「无 ETH 也能用」。</li>
+<li><b>Aggregator</b>：聚合签名，降低多签/多账户 Gas。</li>
+</ul>
+<div class="tip"><b>工程意义：</b>账户抽象让钱包可以做到「社交恢复（失钥可找回）」「交易前风控」「批量授权+转账一步完成」。代表实现如 Safe（原 Gnosis Safe）与 Stackup/Candide 等 4337 栈。ethers 本身不直接处理 UserOp，需用 <code>@account-abstraction/sdk</code> 或 <code>permissionless</code> 等库，但底层仍复用本篇的 Provider / 签名原语。</div>
+
+<h3>13.2 本地密钥管理的最简封装</h3>
+<p>把本篇能力封装成一个可复用的钱包模块，便于后续篇章调用：</p>
+<pre><code>// wallet-factory.js
+// 统一封装：助记词派生 / keystore 导入 / 连接 Provider
+import { ethers } from "ethers";
+import { readFileSync } from "fs";
+
+export function fromMnemonic(mnemonic, rpc, path = "m/44'/60'/0'/0/0") {
+  const provider = new ethers.JsonRpcProvider(rpc);
+  const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, path);
+  return wallet.connect(provider);
+}
+
+export async function fromKeystore(file, password, rpc) {
+  const json = readFileSync(file, "utf8");
+  const wallet = await ethers.Wallet.fromEncryptedJson(json, password);
+  return wallet.connect(new ethers.JsonRpcProvider(rpc));
+}
+
+export function checksum(addr) {
+  return ethers.getAddress(addr); // 自动做 EIP-55
+}
+
+// 使用示例
+// const w = fromMnemonic(process.env.MNEMONIC, process.env.SEPOLIA_RPC);
+// console.log(w.address, await w.getBalance());
+</code></pre>
+<div class="note"><b>小结：</b>本篇你已掌握以太坊的「世界观」（状态/账户/EVM/Gas/PoS/L2）与「动手能力」（派生、签名、转账、监听、备份）。下一篇我们将进入合约世界，用 Solidity 写出真正部署上链的智能合约。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用本文 8.2 的 HD 派生代码，验证测试助记词派生的第 0 地址，并对比 MetaMask 导入同一助记词的结果。</li>
+<li>在 Sepolia 领水后，运行 10.1 的 EIP-1559 转账，并在 Etherscan（sepolia.etherscan.io）查看回执与 baseFee 是否如你所设。</li>
+<li>运行 9.2 的 EIP-712 示例，把签名贴到 ethers 的 verifyTypedData 验证；再手算 digest 与合约端 ecrecover 对照。</li>
+<li>故意把转账的 nonce 设为已被使用的旧值重发，观察节点报错；再用 10.2 的「取消」交易把卡住的交易挤出。</li>
+<li>用 11.2 导出 keystore，删除内存里的钱包对象，再从 keystore + 密码还原，确认地址一致。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能说清 EOA 与合约账户的本质区别，以及「钱包」在链上到底代表什么</li>
+<li>能画出 stateRoot / storageRoot / receiptsRoot 各自证明什么</li>
+<li>能口述 EIP-1559 的 base fee 与 priority fee 分别去哪、如何估算</li>
+<li>能解释 nonce 与 EIP-155 链 ID 如何防重放</li>
+<li>能用 ethers 完成 personal_sign、EIP-712、SIWE 三种签名并验证</li>
+<li>能发送 EIP-1559 转账，并在卡住时用同 nonce 替换来加速/取消</li>
+<li>能导出/导入 keystore，并用 Provider 监听入账与解析事件</li>
+<li>能根据场景在 Infura/Alchemy/QuickNode/公共 RPC 与 ethers/viem 间选型</li>
+</ul></div>
+
+<div class="pager"><a href="03-btc-ecosystem.html"><b>上一篇</b>← BTC 生态篇</a><a class="next" href="05-solidity.html"><b>下一篇</b>ETH 篇 II：Solidity 合约开发 →</a></div>
+</main></body></html>

@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOL 篇 III：DeFi 与生态实战</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html" class="cur">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">SOL 篇 III：DeFi 与生态实战</span><span class="chain chain-sol">SOL</span></header>
+<main class="doc">
+<h1>SOL 篇 III：DeFi 与生态实战</h1><p class="subtitle">站在 Jupiter、Orca、Kamino、Jito、Metaplex、Pyth、Helius 等协议肩膀上，用现成 SDK 把"聚合交易 / 借贷 / 流动性质押 / NFT / 预言机 / 数据增强"全部跑通。主要参考：Jupiter 文档 dev.jup.ag、各协议官方文档。</p>
+
+<div class="goals"><b>本章目标：</b>
+<ol style="margin-top:6px">
+<li>建立 Solana DeFi 生态地图，并对照以太坊 DeFi 找到对应物；</li>
+<li>用 Jupiter Quote/Swap API 完成一次完整聚合兑换（含优先费与滑点）；</li>
+<li>读取 Orca Whirlpool 池数据，了解 Kamino/Marginfi 借贷交互思路；</li>
+<li>理解 Jito 流动性质押与 MEV 小费机制；</li>
+<li>用 Metaplex 创建 NFT、用 DAS API 读压缩 NFT；</li>
+<li>用 Helius webhook 监听活动，并掌握交易落地可靠性策略与 Pyth 喂价读取。</li>
+</ol></div>
+
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 生态地图与 ETH DeFi 对照</a>
+<a href="#s2">2. Jupiter 实战：聚合兑换（核心）</a>
+<a href="#s3">3. Orca Whirlpool 数据读取</a>
+<a href="#s4">4. Kamino / Marginfi 借贷</a>
+<a href="#s5">5. Jito 质押与 MEV 小费</a>
+<a href="#s6">6. Metaplex：创建 NFT</a>
+<a href="#s7">7. 压缩 NFT 与 DAS API</a>
+<a href="#s8">8. 基础设施：Helius / 可靠性 / Pyth</a>
+<a href="#s9">9. 端到端实战：跟单机器人</a>
+<a href="#s10">10. 读懂一笔交易</a>
+<a href="#s11">11. 钱包 UX 最佳实践</a>
+<a href="#s12">12. 安全与风控</a>
+<a href="#s13">13. 性能与成本优化</a>
+<a href="#s14">14. AMM 类型对照</a>
+<a href="#s15">15. 下一步学习路线</a>
+</div>
+
+<h2 id="s1">1. 生态地图与 ETH DeFi 对照</h2>
+<p>Solana DeFi 的"可组合性"建立在统一的 SPL Token 标准与高吞吐之上。下面这张地图帮你在脑子里建立坐标：</p>
+<div class="grid c3">
+<div class="card"><h4>Jupiter</h4><p>聚合器入口。把全网 AMM/路由的最优路径聚合，是大多数钱包/前端做"兑换"的默认后端。</p></div>
+<div class="card"><h4>Raydium / Orca / Meteora</h4><p>AMM 三强：Raydium 经典 AMM+订单簿混合；Orca 主推 Whirlpool（CLMM 集中流动性）；Meteora 主推 DLMM 动态流动性。</p></div>
+<div class="card"><h4>Kamino / Marginfi</h4><p>借贷协议。Kamino 还做流动性 vault 与 LST；Marginfi 是多抵押借贷，生态老牌。</p></div>
+<div class="card"><h4>Jito / Marinade</h4><p>流动性质押（LST）。Jito 额外把 MEV 收益分配给质押者，并主导 MEV 小费市场。</p></div>
+<div class="card"><h4>Metaplex</h4><p>NFT 标准与工具链（Token Metadata、Candy Machine、Bubblegum 压缩 NFT）。</p></div>
+<div class="card"><h4>Pyth</h4><p>预言机。Solana 生态主流喂价来源，采用"按需 pull"上链的轻量模型。</p></div>
+</div>
+
+<table>
+<tr><th>功能</th><th>以太坊对应</th><th>Solana 代表</th></tr>
+<tr><td>聚合兑换</td><td>1inch / 0x</td><td>Jupiter</td></tr>
+<tr><td>AMM</td><td>Uniswap V2/V3</td><td>Raydium / Orca(CLMM) / Meteora(DLMM)</td></tr>
+<tr><td>借贷</td><td>Aave / Compound</td><td>Kamino / Marginfi</td></tr>
+<tr><td>流动性质押</td><td>Lido</td><td>JitoSOL / mSOL(Marinade)</td></tr>
+<tr><td>NFT</td><td>OpenSea 标准</td><td>Metaplex Token Metadata</td></tr>
+<tr><td>预言机</td><td>Chainlink</td><td>Pyth Network</td></tr>
+<tr><td>RPC/索引</td><td>Infura / Alchemy</td><td>Helius / QuickNode / Triton</td></tr>
+</table>
+<div class="tip"><b>开发视角</b>：在以太坊你常直接 call 合约函数；在 Solana 你更多"调协议提供的 TS SDK，拿到一个 VersionedTransaction，签名发送"。掌握这种"协议即 SDK、 SDK 即交易工厂"的心智，能事半功倍。</div>
+
+<h2 id="s2">2. Jupiter 实战：聚合兑换（核心）</h2>
+<p>Jupiter 提供两套 API：<strong>Quote API</strong>（计算最优路径与报价）和 <strong>Swap API</strong>（据此生成可直接签名的交易）。前端/后端拿到交易后反序列化、签名、广播即可。</p>
+
+<h3>2.1 完整兑换代码（Node.js）</h3>
+<pre><code>import { Connection, Keypair, VersionedTransaction, PublicKey } from "@solana/web3.js";
+
+const RPC = "https://api.mainnet-beta.solana.com"; // 生产请换 Helius/QuickNode
+const connection = new Connection(RPC);
+
+// 实际项目里钱包应由用户持有；这里仅演示流程
+const wallet = Keypair.generate();
+
+const inputMint = "So11111111111111111111111111111111111111112";  // SOL
+const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // USDC
+const amount = 1_000_000_000; // 1 SOL = 1e9 lamports
+
+// 1) 请求报价（注意 URL 中的 &amp; 是查询参数分隔符）
+const quoteUrl =
+  "https://quote-api.jup.ag/v6/quote?inputMint=" + inputMint +
+  "&amp;outputMint=" + outputMint +
+  "&amp;amount=" + amount +
+  "&amp;slippageBps=50"; // 50 = 0.5% 滑点容忍
+const quote = await (await fetch(quoteUrl)).json();
+console.log("预计得到 USDC 最小量:", quote.outAmount, "路由步数:", quote.routePlan.length);
+
+// 2) 用报价请求 swap 交易（返回 base64 序列化的 VersionedTransaction）
+const swapUrl = "https://quote-api.jup.ag/v6/swap";
+const swapBody = {
+  quoteResponse: quote,            // 直接塞入上一步的报价
+  userPublicKey: wallet.publicKey.toBase58(),
+  wrapAndUnwrapSol: true,          // 自动处理 SOL&lt;-&gt;wSOL 包装
+  dynamicComputeUnitLimit: true,   // 让 Jupiter 估算计算单元
+  prioritizationFeeLamports: "auto", // 优先费自动估算（拥堵时很有用）
+};
+const swapRes = await (await fetch(swapUrl, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(swapBody),
+})).json();
+
+// 3) 反序列化并签名
+const swapTx = VersionedTransaction.deserialize(
+  Buffer.from(swapRes.swapTransaction, "base64")
+);
+swapTx.sign([wallet]); // 前端用 adapter.signTransaction(swapTx)
+
+// 4) 发送并确认
+const sig = await connection.sendRawTransaction(swapTx.serialize());
+const result = await connection.confirmTransaction(sig, "confirmed");
+console.log("成交签名:", sig, "错误:", result.value.err);
+</code></pre>
+<div class="note"><b>滑点与优先费</b>：<code>slippageBps</code> 设置过低在波动行情会频繁失败；过高则可能被套利。优先费用 <code>prioritizationFeeLamports</code> 在网络拥堵时建议设 <code>"auto"</code> 或显式给值（如 100000），否则交易可能长时间不被打包。</div>
+
+<h3>2.2 前端钱包适配器版本</h3>
+<p>在 React 里，私钥由用户钱包持有，你只需拿到 <code>VersionedTransaction</code> 让用户签名：</p>
+<pre><code>import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+
+function SwapButton({ quote }) {
+  const { connection } = useConnection();
+  const { publicKey, signTransaction, sendTransaction } = useWallet();
+
+  async function doSwap() {
+    const res = await fetch("https://quote-api.jup.ag/v6/swap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: publicKey.toBase58(),
+        wrapAndUnwrapSol: true,
+      }),
+    }).then((r) =&gt; r.json());
+
+    const tx = VersionedTransaction.deserialize(Buffer.from(res.swapTransaction, "base64"));
+    // 用户钱包弹窗签名（私钥不出设备）
+    const signed = await signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction(sig, "confirmed");
+    alert("兑换成功: " + sig);
+  }
+  return &lt;button onClick={doSwap}&gt;用 Jupiter 兑换&lt;/button&gt;;
+}
+</code></pre>
+
+<h3>2.3 Limit Order 与 DCA 简介</h3>
+<p>Jupiter 还提供两类进阶产品（均通过专属 API/程序）：</p>
+<ul>
+<li><b>Limit Order（限价单）</b>：设定"到达某价格才成交"的挂单，由 Jupiter 的限价程序托管，撮合后自动执行。适合不想盯盘的用户。</li>
+<li><b>DCA（定投）</b>：把"每 N 分钟买 X 数量"拆成多笔，程序按计划自动执行，平摊成本。通过 <code>https://api.jup.ag/swap/v1/.../dca</code> 系列接口或 SDK 创建。</li>
+</ul>
+<pre><code>// 创建 DCA 订单（示意请求体）
+const dcaBody = {
+  user: wallet.publicKey.toBase58(),
+  inputMint, outputMint,
+  inAmountPerCycle: 1_000_000,   // 每周期投入（lamports/SOL）
+  numberOfCycles: 10,            // 共 10 次
+  cycleSecondsApart: 3600,       // 每小时一次
+};
+// POST https://api.jup.ag/swap/v1/dca/createOrder 并签名返回的 tx
+</code></pre>
+
+<h2 id="s3">3. Orca Whirlpool 数据读取</h2>
+<p>Orca 的 Whirlpool 是集中流动性 AMM（类似 Uniswap V3）。用 <code>@orca-so/whirlpools-sdk</code> 可只读地读取池子状态。</p>
+<pre><code>import { Connection, PublicKey } from "@solana/web3.js";
+import { AnchorProvider } from "@coral-xyz/anchor";
+import {
+  WhirlpoolContext, buildWhirlpoolClient,
+  ORCA_WHIRLPOOLS_CONFIG,
+} from "@orca-so/whirlpools-sdk";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+// 读取场景不需要真实签名者，用只读 provider 占位
+const dummyWallet = { publicKey: PublicKey.default, signTransaction: async (t) =&gt; t, signAllTransactions: async (t) =&gt; t };
+const ctx = WhirlpoolContext.from(connection, new AnchorProvider(connection, dummyWallet, {}), ORCA_WHIRLPOOLS_CONFIG);
+const client = buildWhirlpoolClient(ctx);
+
+// 已知某 Whirlpool 地址（如 SOL/USDC），读取实时数据
+const whirlpoolAddr = new PublicKey("&lt;WHIRLPOOL_ADDRESS&gt;");
+const whirlpool = await client.getPool(whirlpoolAddr);
+const data = whirlpool.getData();
+console.log({
+  tokenA: data.tokenMintA.toBase58(),
+  tokenB: data.tokenMintB.toBase58(),
+  price: data.price,              // 当前价格（Decimal）
+  tickSpacing: data.tickSpacing,  // 价格刻度间隔
+  liquidity: data.liquidity.toString(),
+  feeRate: data.feeRate,          // 手续费率（百万分比）
+});
+
+// 还可以列出某代币相关的所有池子
+const candidates = await client.getPoolsByTokenPair(
+  new PublicKey(inputMint), new PublicKey(outputMint)
+);
+console.log("候选池数量:", candidates.length);
+</code></pre>
+<div class="tip"><b>CLMM 要点</b>：集中流动性让 LP 在指定价格区间提供流动性，资本效率更高但面临"区间外无收益/需再平衡"。读取 <code>price</code> / <code>tickSpacing</code> / <code>liquidity</code> 是做行情面板与套利分析的基础。</div>
+
+<h2 id="s4">4. Kamino / Marginfi 借贷</h2>
+<p>借贷协议的交互范式类似：<strong>存入抵押品 → 借出资产 → 监控健康因子 → 还款取回</strong>。两大协议都提供 TS SDK（<code>@kamino-finance/kamino-lending</code>、<code>@marginfi/mrgn-client-v2</code>）。</p>
+
+<h3>4.1 Kamino 借贷（思路与代码片段）</h3>
+<pre><code>import { Kamino, Strategy } from "@kamino-finance/kamino-lending";
+import { Connection, PublicKey, Wallet } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const kamino = new Kamino("mainnet-beta", connection, "https://api.kamino.finance");
+
+// 列出市场（借贷市场）
+const markets = await kamino.getMarkets();
+const market = markets[0];
+
+// 读取某用户的借贷头寸（obligation）
+const obligation = await kamino.getObligation(
+  new PublicKey("&lt;USER_OBLIGATION&gt;"), market
+);
+console.log("存入价值:", obligation.depositsValue, "借出价值:", obligation.borrowsValue);
+
+// 存款动作：SDK 内部会组装并签名交易（需用户钱包签名）
+// await kamino.deposit(connection, wallet, market, reserve, amountLamports);
+</code></pre>
+
+<h3>4.2 Marginfi</h3>
+<pre><code>import { MarginfiClient, getConfig } from "@marginfi/mrgn-client-v2";
+
+const config = getConfig("production");
+const mfiClient = await MarginfiClient.fetch(config, wallet, connection);
+
+// 连接某银行账户（bank account / obligation）
+const mfiAccount = await mfiClient.createMarginfiAccount(); // 或 fetch 已有
+const usdcBank = mfiClient.getBankByMint("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+// 存入 100 USDC
+await mfiAccount.deposit(100e6, usdcBank.address);
+// 借出 SOL（需满足健康因子）
+const solBank = mfiClient.getBankByMint("So11111111111111111111111111111111111111112");
+await mfiAccount.borrow(1e9, solBank.address);
+console.log("健康因子:", mfiAccount.healthFactor);
+</code></pre>
+<div class="warn"><b>清算风险</b>：借贷必须监控健康因子（health factor）。低于阈值会被清算，损失抵押品。做借贷产品时，务必在 UI 中清晰展示"可借额度"与"清算价"，并提示用户留足缓冲。</div>
+
+<h2 id="s5">5. Jito 质押与 MEV 小费</h2>
+<p>JitoSOL 是流动性质押代币：你把 SOL 质押进 Jito 的 stake pool，获得 JitoSOL，它随质押奖励（含 MEV 收益）持续增值，同时可自由转移、提供流动性。</p>
+<pre><code>import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+// 简化示意：真实质押请用 @jito-labs/jitosol SDK 或 stake pool 程序
+// 质押后你会收到与存入量 1:1（随奖励增长）的 JitoSOL 代币
+async function stakeToJito(connection, wallet, solAmount) {
+  // 实际流程：向 Jito stake pool 程序转账 SOL，程序 mint JitoSOL 到你的 ATA
+  console.log("质押", solAmount, "SOL 换 JitoSOL");
+}
+
+// Jito 的 MEV 小费（tip）：把少量 SOL 转给 Jito tip 账户，提升被 leader 优先打包概率
+const JITO_TIP_ACCOUNTS = [
+  "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU",
+  "HFqU969nJ8i9CJWgPNfCse5PqaD1w8dQngzd6rmeuaga",
+  "Cw8CFyM9FkoBi8NL9wiRAwzskCA8XBiDqYJioGAg3TmF",
+];
+
+function buildTipTx(wallet, tipLamports) {
+  return new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: wallet.publicKey,
+      toPubkey: new PublicKey(JITO_TIP_ACCOUNTS[0]),
+      lamports: tipLamports,
+    })
+  );
+}
+
+// 用法：把 tip 交易与你的主交易合并（或作为独立优先级提示），一起签名发送
+const tipTx = buildTipTx(wallet, 10_000); // 0.00001 SOL 小费
+console.log("已构建 Jito 小费交易");
+</code></pre>
+<div class="tip"><b>优先费 vs MEV 小费</b>：<code>ComputeBudgetProgram.setComputeUnitPrice</code> 是"协议内优先费"，给验证者；Jito tip 是"给 Jito 的 MEV 小费"，由 Jito 的 leader 优先打包。高价值/抢跑敏感交易（如套利、清算）常两者叠加。</div>
+
+<h2 id="s6">6. Metaplex：创建 NFT</h2>
+<p>Metaplex 的 Token Metadata 标准是 Solana NFT 的事实标准。下面用 <strong>Umi</strong>（Metaplex 新一代工具链）创建一个 NFT：</p>
+<pre><code>import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import {
+  generateSigner, keypairIdentity, percentAmount,
+} from "@metaplex-foundation/umi";
+import { createNft } from "@metaplex-foundation/mpl-token-metadata";
+
+// 1) 初始化 Umi（连 devnet）+ 设置身份（creator 钱包）
+const umi = createUmi("https://api.devnet.solana.com");
+const creator = generateSigner(umi);
+umi.use(keypairIdentity(creator));
+
+// 2) 创建 NFT（1 个，不可拆分；若要 SFT 用 createFungible）
+const mint = generateSigner(umi);
+await createNft(umi, {
+  mint,
+  name: "我的第一个 NFT",
+  symbol: "DEMO",
+  uri: "https://example.com/metadata.json", // 指向 JSON 元数据（图片/IPFS 等）
+  sellerFeeBasisPoints: percentAmount(5),     // 二级市场交易 5% 版税
+  creators: [{ address: creator.publicKey, verified: true, share: 100 }],
+}).sendAndConfirm(umi);
+
+console.log("NFT mint 地址:", mint.publicKey);
+</code></pre>
+<div class="note"><b>元数据 JSON</b>：<code>uri</code> 指向的 JSON 至少含 <code>name</code>、<code>description</code>、<code>image</code>（图片链接）、<code>attributes</code> 等字段。生产通常存到 Arweave / IPFS，并用去中心化链接（如 <code>ar://...</code> 或 <code>ipfs://...</code>）。</div>
+
+<h2 id="s7">7. 压缩 NFT 与 DAS API</h2>
+<p>普通 NFT 每个都占一个链上 ATA，铸造量大时成本极高。<strong>压缩 NFT（cNFT，基于 Bubblegum + State Tree）</strong>把数据存进 Merkle 树，单次铸造成本极低，适合的大规模铸造（门票、游戏物品）。</p>
+<pre><code>import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { generateSigner, keypairIdentity } from "@metaplex-foundation/umi";
+import {
+  createTree, mintToCollectionV1,
+} from "@metaplex-foundation/mpl-bubblegum";
+
+const umi = createUmi("https://api.devnet.solana.com").use(keypairIdentity(generateSigner(umi)));
+
+// 1) 先创建一棵状态树（Merkle tree），容量与深度决定可铸数量
+const tree = generateSigner(umi);
+await createTree(umi, {
+  merkleTree: tree,
+  maxDepth: 14,   // 深度
+  maxBufferSize: 64,
+}).sendAndConfirm(umi);
+
+// 2) 在树上铸造压缩 NFT（成本极低）
+await mintToCollectionV1(umi, {
+  merkleTree: tree.publicKey,
+  metadata: {
+    name: "压缩 NFT #1",
+    uri: "https://example.com/cnft.json",
+    sellerFeeBasisPoints: 0,
+  },
+}).sendAndConfirm(umi);
+console.log("已在状态树上铸造压缩 NFT");
+</code></pre>
+
+<h3>7.1 用 DAS API 读取压缩 NFT</h3>
+<p>读取压缩 NFT 不能像普通 NFT 那样直接读 ATA，要走 <strong>DAS（Digital Asset Standard）API</strong>。Helius / Metaplex DAS 都提供。</p>
+<pre><code>// 通过 Helius 的 DAS 端点查询某地址拥有的全部资产（含压缩 NFT）
+const dasUrl = "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY";
+const res = await fetch(dasUrl, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    jsonrpc: "2.0", id: "1", method: "getAssetsByOwner",
+    params: { ownerAddress: "&lt;WALLET_BASE58&gt;", page: 1, limit: 100 },
+  }),
+});
+const data = await res.json();
+for (const item of data.result.items) {
+  console.log(item.id, item.content.metadata.name, "是否压缩:", item.compression.compressed);
+}
+</code></pre>
+<div class="tip"><b>DAS 关键字段</b>：返回项含 <code>compression.compressed</code>（是否压缩）、<code>content.metadata</code>（名称/属性）、<code>ownership</code>（拥有者）。做 NFT 市场的"我的资产"页，DAS API 是唯一高效路径。</div>
+
+<h2 id="s8">8. 基础设施：Helius / 可靠性 / Pyth</h2>
+
+<h3>8.1 Helius 增强 API 与 webhook 监听</h3>
+<p>Helius 的<strong>增强 API</strong>把原始交易解析成易读的"账户变动、代币转移、NFT 转移"等结构化字段；<strong>webhook</strong> 可在地址发生活动时主动推送给你。</p>
+<pre><code>// 1) 创建 webhook（需服务端调用 Helius 接口，下面仅示例请求体）
+const webhookBody = {
+  webhookURL: "https://your-server.com/notify",
+  transactionTypes: ["SWAP", "TRANSFER", "NFT_SALE"],
+  accountAddresses: ["&lt;WALLET_A&gt;", "&lt;WALLET_B&gt;"],
+  webhookType: "enhanced",
+};
+// POST https://api.helius.xyz/v0/webhooks?api-key=YOUR_KEY
+
+// 2) 服务端接收回调（Node/Express 示例）
+import express from "express";
+const app = express();
+app.use(express.json());
+app.post("/notify", (req, res) =&gt; {
+  const events = req.body;
+  for (const ev of events) {
+    console.log("类型:", ev.type, "签名:", ev.signature);
+    // ev 里含增强字段：账户余额变动、转移的代币、涉及地址等
+    // 据此触发通知 / 更新数据库 / 执行策略
+  }
+  res.sendStatus(200); // 必须尽快返回 200，否则 Helius 会重试
+});
+app.listen(3000);
+</code></pre>
+<div class="note"><b>webhook 可靠性</b>：收到后应尽快 ack（返回 200），把重活（写库、复杂计算）放进队列异步处理，避免超时导致 Helius 重复推送。</div>
+
+<h3>8.2 交易落地可靠性策略</h3>
+<p>Solana 高吞吐下，交易失败的常见原因：blockhash 过期、算力超限、被抢跑、优先费不足。稳健发送策略如下：</p>
+<pre><code>import { Connection, TransactionExpiredBlockhashError, VersionedTransaction } from "@solana/web3.js";
+
+async function sendReliably(connection, tx: VersionedTransaction, maxRetry = 3) {
+  for (let i = 0; i &lt; maxRetry; i++) {
+    try {
+      const sig = await connection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: false,
+        maxRetries: 2,
+      });
+      const result = await connection.confirmTransaction(
+        { signature: sig, ...(await connection.getLatestBlockhash()) },
+        "confirmed"
+      );
+      if (result.value.err) throw new Error(JSON.stringify(result.value.err));
+      return sig;
+    } catch (e) {
+      // blockhash 过期：刷新并重签后再试
+      if (e instanceof TransactionExpiredBlockhashError) {
+        console.warn("blockhash 过期，重签重试", i + 1);
+        // 真实场景需重新构造交易并签名
+        continue;
+      }
+      // 优先费不足：阶梯式提高 microLamports 再试（略）
+      console.error("发送失败:", e);
+      if (i === maxRetry - 1) throw e;
+    }
+  }
+}
+</code></pre>
+<ul>
+<li><b>优先费阶梯</b>：首次用 <code>"auto"</code>，失败则按 1x→2x→5x 递增 <code>setComputeUnitPrice</code>；</li>
+<li><b>blockhash 管理</b>：长流程定期 <code>getLatestBlockhash()</code>，过期则重签；</li>
+<li><b>幂等</b>：对"已发送未确认"的交易用 <code>getSignatureStatus</code> 查状态，避免重复提交造成双倍操作。</li>
+</ul>
+
+<h3>8.3 Pyth 喂价读取</h3>
+<p>Pyth 在 Solana 上采用<strong>按需 pull 预言机</strong>：价格更新数据先由 Hermes 网关分发，调用方付费把更新"拉"到链上，合约再读取。两种方式：</p>
+<pre><code>// 方式 A：链下直接拉取最新价格（做展示/策略计算）
+import { HermesClient } from "@pythnetwork/hermes-client";
+const hermes = new HermesClient("https://hermes.pyth.network");
+
+// priceId 是 Pyth 为每个交易对分配的固定 ID（如 SOL/USD）
+const SOL_USD_ID = "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
+const feeds = await hermes.getLatestPriceFeeds([SOL_USD_ID]);
+const price = feeds[0].price;
+console.log("SOL 价格:", price.price * Math.pow(10, price.expo), "置信区间:", price.conf);
+
+// 方式 B：链上 pull —— 先把更新数据上链，再在合约里用 pyth-sdk 读取
+const updateData = await hermes.getLatestUpdateData([SOL_USD_ID]);
+// 调用 Pyth 的 pull oracle 程序写入 updateData，得到链上 PriceAccount
+// 你的 Anchor 合约通过 pyth_sdk_solana 的 load_price_feed_from_account_info 读取
+// 关键点：Solana 上 Pyth 不是"常驻链上喂价"，而是"谁用谁付费上链"，所以调用前要确保价格已更新
+</code></pre>
+<div class="warn"><b>价格新鲜度</b>：链上读到的 Pyth 价格可能"陈旧"。合约里应检查 <code>publish_time</code> / 最大延迟，价格过旧直接 revert，防止用过期价格结算造成损失。</div>
+
+<h2 id="s9">9. 端到端实战：监控 → 报价 → 执行的迷你机器人</h2>
+<p>把前面能力串起来：用 Helius 监听某钱包的买入行为，当监听到"大额买入某代币"时，自动用 Jupiter 查报价、构造并发送跟单交易。这是 DeFi 策略/套利机器人的基本骨架。</p>
+<pre><code>import { Connection, Keypair, VersionedTransaction, PublicKey } from "@solana/web3.js";
+
+const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=YOUR_KEY");
+const wallet = Keypair.generate(); // 实际由用户/策略钱包持有
+
+// 步骤1：从 Helius webhook / 或直接轮询某地址最近交易，拿到"目标代币 mint"
+async function watchAndFollow(targetWallet: string) {
+  // 真实环境用 webhook 推送；这里用轮询最近签名示意
+  const sigs = await connection.getSignaturesForAddress(new PublicKey(targetWallet), { limit: 5 });
+  for (const { signature } of sigs) {
+    const tx = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
+    if (!tx || tx.meta.err) continue;
+    const boughtMint = extractBoughtMint(tx); // 解析出买入的代币 mint
+    if (boughtMint) await followBuy(boughtMint, 0.1 /* 用 0.1 SOL 跟单 */);
+  }
+}
+
+function extractBoughtMint(tx: any): string | null {
+  // 简化：从 postTokenBalances 中找到余额增加且非已知稳定币的 mint
+  const balances = tx.meta.postTokenBalances ?? [];
+  for (const b of balances) {
+    if ((b.uiTokenAmount.uiAmount ?? 0) &gt; 0) return b.mint;
+  }
+  return null;
+}
+
+// 步骤2：用 Jupiter 跟单买入
+async function followBuy(outputMint: string, solAmount: number) {
+  const inputMint = "So11111111111111111111111111111111111111112"; // SOL
+  const quoteUrl =
+    "https://quote-api.jup.ag/v6/quote?inputMint=" + inputMint +
+    "&amp;outputMint=" + outputMint +
+    "&amp;amount=" + Math.floor(solAmount * 1e9) +
+    "&amp;slippageBps=100";
+  const quote = await (await fetch(quoteUrl)).json();
+
+  const swapRes = await (await fetch("https://quote-api.jup.ag/v6/swap", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quoteResponse: quote, userPublicKey: wallet.publicKey.toBase58(), wrapAndUnwrapSol: true, prioritizationFeeLamports: "auto" }),
+  })).json();
+
+  const tx = VersionedTransaction.deserialize(Buffer.from(swapRes.swapTransaction, "base64"));
+  tx.sign([wallet]);
+  const sig = await connection.sendRawTransaction(tx.serialize());
+  await connection.confirmTransaction(sig, "confirmed");
+  console.log("跟单买入成交:", sig, "代币:", outputMint);
+}
+
+// watchAndFollow("&lt;被跟单的大户地址&gt;");
+</code></pre>
+<div class="warn"><b>合规与风险</b>：跟单/抢跑类策略可能触碰"三明治攻击"与合规红线。本例仅作技术演示，请遵守所在司法辖区法规，且仅用自己授权的资金在小范围内测试。</div>
+
+<h2 id="s10">10. 读懂一笔交易：getParsedTransaction</h2>
+<p>调试与对账时，<code>getParsedTransaction</code> 是最常用接口。它返回已解析的指令、账户、SOL 余额变动与代币余额变动。</p>
+<pre><code>import { Connection, PublicKey } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const sig = "&lt;交易签名&gt;";
+
+const tx = await connection.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0 });
+if (!tx) throw new Error("交易不存在或未被确认");
+
+console.log("是否成功:", !tx.meta.err);
+console.log("手续费( SOL ):", (tx.meta.fee ?? 0) / 1e9);
+
+// 1) SOL 余额变动（pre/post 数组按 accountKeys 顺序对应）
+const keys = tx.transaction.message.accountKeys;
+for (let i = 0; i &lt; keys.length; i++) {
+  const pre = (tx.meta.preBalances[i] ?? 0) / 1e9;
+  const post = (tx.meta.postBalances[i] ?? 0) / 1e9;
+  if (pre !== post) {
+    console.log("SOL 变动:", keys[i].pubkey.toBase58(), pre, "-&gt;", post);
+  }
+}
+
+// 2) 代币余额变动
+const preMap = new Map((tx.meta.preTokenBalances ?? []).map((b) =&gt; [b.accountIndex, b]));
+for (const post of (tx.meta.postTokenBalances ?? [])) {
+  const pre = preMap.get(post.accountIndex);
+  const preAmt = pre?.uiTokenAmount.uiAmount ?? 0;
+  const postAmt = post.uiTokenAmount.uiAmount ?? 0;
+  if (preAmt !== postAmt) {
+    console.log("代币变动:", post.mint, "账户#" + post.accountIndex, preAmt, "-&gt;", postAmt);
+  }
+}
+</code></pre>
+<div class="tip"><b>对账技巧</b>：把 <code>preTokenBalances</code> 与 <code>postTokenBalances</code> 按 <code>accountIndex</code> 配对，就能精确算出"谁向谁转移了多少代币"，是做税务/流水导出的基础。</div>
+
+<h2 id="s11">11. 钱包 UX 最佳实践</h2>
+<p>好的 Solana 钱包前端应把"余额、代币、价格、滑点"整合。下面是组合多个 API 的最小面板逻辑。</p>
+<pre><code>import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=YOUR_KEY");
+
+// 拉取某代币美元价（Jupiter Price API）
+async function getUsdPrice(mint: string): Promise&lt;number&gt; {
+  const url = "https://price.jup.ag/v6/price?ids=" + mint;
+  const r = await (await fetch(url)).json();
+  return r.data[mint]?.price ?? 0;
+}
+
+// 组合：SOL 余额 + SPL 列表 + 各自美元估值
+async function buildPortfolio(owner: PublicKey) {
+  const sol = (await connection.getBalance(owner)) / LAMPORTS_PER_SOL;
+  const solPrice = await getUsdPrice("So11111111111111111111111111111111111111112");
+
+  const tokens = await connection.getParsedTokenAccountsByOwner(owner, {
+    programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+  });
+
+  const rows = [];
+  for (const { account } of tokens.value) {
+    const info = account.data.parsed.info;
+    const amount = info.tokenAmount.uiAmount;
+    if (!amount) continue;
+    const price = await getUsdPrice(info.mint);
+    rows.push({ mint: info.mint, amount, usd: amount * price });
+  }
+  return {
+    sol, solUsd: sol * solPrice,
+    tokens: rows,
+    totalUsd: sol * solPrice + rows.reduce((s, r) =&gt; s + r.usd, 0),
+  };
+}
+</code></pre>
+<ul>
+<li><b>滑点设置</b>：给用户可选的 0.1% / 0.5% / 1% 滑点档位，默认 0.5%，并提示"高波动代币建议提高"；</li>
+<li><b>交易预览</b>：发送前显示"预计得到 X、价格影响 Y%、最少收到 Z（含滑点）"；</li>
+<li><b>状态反馈</b>：用 confirmed / finalized 两阶段提示"处理中 / 已确认"。</li>
+</ul>
+
+<h2 id="s12">12. 安全与风控</h2>
+<p>Solana 上的"平民级"攻击非常多，钱包/前端必须主动防御：</p>
+<table>
+<tr><th>风险</th><th>说明</th><th>对策</th></tr>
+<tr><td>假代币</td><td>攻击者发一个同名/仿冒 mint 的代币充入你地址</td><td>只按可信 mint 白名单展示；校验 mint authority</td></tr>
+<tr><td>地址投毒</td><td>伪造一个与你常用地址极相似的地址，诱导你粘贴错</td><td>展示地址时显示前后缀 + 校验和，提醒核对</td></tr>
+<tr><td>无限授权</td><td>approve 给恶意合约无限额度</td><td>默认小额授权，提供一键 revoke 入口</td></tr>
+<tr><td>RPC 欺骗</td><td>自建节点返回假余额/假成交</td><td>关键操作走多个 RPC 交叉验证</td></tr>
+</table>
+
+<h3>12.1 校验代币可信度</h3>
+<pre><code>import { getMint } from "@solana/spl-token";
+import { Connection, PublicKey } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+
+async function auditToken(mintAddress: string) {
+  const info = await getMint(connection, new PublicKey(mintAddress));
+  console.log("精度:", info.decimals);
+  console.log("总供应:", info.supply.toString());
+  console.log("铸造权限:", info.mintAuthority?.toBase58() ?? "已放弃(固定供应)");
+  console.log("冻结权限:", info.freezeAuthority?.toBase58() ?? "无(无法冻结持有人)");
+  // 若 freezeAuthority 存在，团队可随时冻结任何持有者 —— 高风险信号
+  // 若 mintAuthority 存在，团队可增发 —— 需结合项目可信度判断
+}
+</code></pre>
+<div class="warn"><b>冻结权限</b>：一个仍保留 <code>freezeAuthority</code> 的代币，发行方能冻结任意持有者账户，使其无法转移。钱包在展示"已收到某代币"时，若对方保留冻结权，应明确标注风险。</div>
+
+<h2 id="s13">13. 性能与成本优化</h2>
+<p>当交易涉及的账户很多（聚合器常达 20+ 账户），体积与算力都会吃紧。两个关键优化：</p>
+
+<h3>13.1 Address Lookup Table（ALT）</h3>
+<pre><code>import {
+  AddressLookupTableProgram, Connection, Keypair, PublicKey, TransactionMessage,
+  VersionedTransaction,
+} from "@solana/web3.js";
+
+async function buildLookupTable(connection: Connection, payer: Keypair, addresses: PublicKey[]) {
+  // 1) 创建表（需付费，且要等约一个 epoch 才能写入地址）
+  const [createIx, lookupTableAddress] = AddressLookupTableProgram.createLookupTable({
+    authority: payer.publicKey,
+    payer: payer.publicKey,
+    recentSlot: await connection.getSlot(),
+  });
+  let tx = new VersionedTransaction(
+    new TransactionMessage({ payerKey: payer.publicKey, recentBlockhash: (await connection.getLatestBlockhash()).blockhash, instructions: [createIx] }).compileToV0Message()
+  );
+  tx.sign([payer]);
+  await connection.sendRawTransaction(tx.serialize());
+
+  // 2) 扩展表，把常用地址登记进去
+  const extendIx = AddressLookupTableProgram.extendLookupTable({
+    authority: payer.publicKey,
+    lookupTable: lookupTableAddress,
+    payer: payer.publicKey,
+    addresses,
+  });
+  tx = new VersionedTransaction(
+    new TransactionMessage({ payerKey: payer.publicKey, recentBlockhash: (await connection.getLatestBlockhash()).blockhash, instructions: [extendIx] }).compileToV0Message()
+  );
+  tx.sign([payer]);
+  console.log("查找表地址:", lookupTableAddress.toBase58());
+}
+</code></pre>
+
+<h3>13.2 计算单元与批量</h3>
+<ul>
+<li><b>精确设置 CU</b>：先用 <code>simulateTransaction</code> 看实际消耗，再 <code>setComputeUnitLimit</code> 给略高的余量，避免浪费或被拒；</li>
+<li><b>优先费阶梯</b>：拥堵时按 1x→2x→5x 提升 <code>setComputeUnitPrice</code>；</li>
+<li><b>合并交易</b>：把多步操作（approve + swap）放进同一笔 VersionedTransaction，减少往返与失败点。</li>
+</ul>
+<div class="tip"><b>经验值</b>：普通转账约 5000 CU，Jupiter 兑换常需 20万~100万+ CU；主网单笔上限约 140万 CU/区块可调。设置 <code>setComputeUnitLimit</code> 时宁可多给 20% 余量，避免"算力不足"失败。</div>
+
+<h2 id="s14">14. AMM 类型对照：AMM / CLMM / DLMM</h2>
+<p>Solana 上的现货 DEX 大体分三类，理解差异有助于选池与做市：</p>
+<table>
+<tr><th>类型</th><th>全称 / 代表</th><th>流动性分布</th><th>特点</th></tr>
+<tr><td>AMM（vAMM）</td><td>Raydium 经典池</td><td>全价格区间均匀</td><td>简单稳健，资本效率较低，适合长尾币</td></tr>
+<tr><td>CLMM</td><td>Orca Whirlpool、Raydium CLMM</td><td>集中在选定价格区间</td><td>资本效率高，区间外无收益，需主动管理</td></tr>
+<tr><td>DLMM</td><td>Meteora</td><td>离散价格区间（Bin）</td><td>更精细的区间与动态费用，适合波动行情做市</td></tr>
+</table>
+<pre><code>// 用 @orca-so/whirlpools-sdk 在某个 CLMM 区间添加流动性（示意）
+// 真实流程：先 getPool，再基于目标价格换算 tick 范围，调用 openPosition + increaseLiquidity
+const whirlpool = await client.getPool(poolAddress);
+const lowerTick = priceToTick(whirlpool, 0.95); // 下限 95% 价
+const upperTick = priceToTick(whirlpool, 1.05); // 上限 105% 价
+// await whirlpool.openPositionWithMetadata(lowerTick, upperTick, liquidityAmount);
+console.log("集中流动性区间 tick:", lowerTick, "-", upperTick);
+</code></pre>
+<div class="note"><b>给钱包开发者的建议</b>：做"兑换"默认走 Jupiter 聚合即可，它会在 AMM/CLMM/DLMM 间自动寻优；只有当你自己做 LP/做市时，才需要深入了解各池的 tick 模型与手续费档位。</div>
+
+<h2 id="s15">15. 下一步学习路线</h2>
+<p>本篇覆盖了 Solana DeFi 最常用的"调用协议 SDK"范式。要进一步深入，建议按以下路线：</p>
+<ul>
+<li><b>读源码</b>：挑一个 Jupiter / Kamino 的开源仓库，看它如何组装 VersionedTransaction 与 ALT；</li>
+<li><b>写合约</b>：把第 II 篇的 Escrow 思路扩展成"带手续费的链上撮合"，理解合约侧是如何被 CPI 调用的；</li>
+<li><b>做监控</b>：用 Helius webhook + DAS API 搭一个"地址资产变动告警"，打通链上→服务→通知的链路；</li>
+<li><b>练风控</b>：写脚本批量 audit 你关注的代币 mint 的 mint/freeze 权限，建立"可信代币白名单"机制；</li>
+<li><b>看官方</b>：Solana Cookbook、Anchor Book、Jupiter/dev.jup.ag、Pyth 文档是最权威的后续资料源。</li>
+</ul>
+<blockquote class="quote">三篇 SOL 教程到此结束。你已经从"理解账户模型"走到"能调用全网协议、能写 Anchor 合约、能做 DeFi 策略"——接下来就是在 devnet 上反复动手把每段代码跑通。</blockquote>
+
+<h3>15.1 术语速查</h3>
+<table>
+<tr><th>术语</th><th>一句话</th></tr>
+<tr><td>LST</td><td>流动性质押代币（如 JitoSOL），质押后获得的自由流通凭证</td></tr>
+<tr><td>cNFT</td><td>压缩 NFT，数据存于状态树，铸造成本极低</td></tr>
+<tr><td>DAS</td><td>Digital Asset Standard，读取压缩/普通 NFT 的统一 API</td></tr>
+<tr><td>pull oracle</td><td>Pyth 的"按需把价格上链"模型，调用方付费</td></tr>
+<tr><td>MEV tip</td><td>给 Jito 的小费，提升交易被优先打包的概率</td></tr>
+<tr><td>ALT</td><td>Address Lookup Table，用索引压缩交易体积</td></tr>
+</table>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 Jupiter Quote API 查"1 SOL 换 USDC"的报价，打印 outAmount 与路由步数。</li>
+<li>在 Node 里把 Jupiter 返回的 swapTransaction 反序列化、签名、发送，验证成交。</li>
+<li>用 Orca SDK 读取一个已知 Whirlpool 的 price 与 liquidity。</li>
+<li>用 Metaplex Umi 在 devnet 创建一个 NFT，并用 <code>getAssetsByOwner</code> 查回来。</li>
+<li>用 DAS API 查询一个地址的压缩 NFT 列表，确认 <code>compression.compressed</code> 字段。</li>
+<li>写一段带"优先费阶梯 + blockhash 过期重签"的可靠发送函数，并接成可复用的发送器。</li>
+<li>（进阶）用 Hermes 客户端拉 SOL/USD 价格，并在控制台打印价格与置信区间。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能说出 Jupiter/Raydium/Orca/Kamino/Jito/Metaplex/Pyth 各自角色，并对照 ETH 生态；</li>
+<li>能独立完成 Jupiter Quote→Swap→反序列化→签名→确认的完整链路；</li>
+<li>理解 slippageBps 与 prioritizationFee 的作用与调参要点；</li>
+<li>能用 Orca SDK 读取 Whirlpool 的 price/liquidity；</li>
+<li>理解 Kamino/Marginfi 借贷的"存抵押→借出→监控健康因子"流程；</li>
+<li>能解释 JitoSOL 流动性质押与 MEV 小费的区别；</li>
+<li>能用 Metaplex 创建 NFT，并区分普通 NFT 与压缩 NFT；</li>
+<li>能用 DAS API 读取压缩 NFT，能说清它的必要性；</li>
+<li>能搭建 Helius webhook 并在服务端解析回调；</li>
+<li>掌握交易可靠性策略（优先费阶梯、blockhash 重签、幂等）；</li>
+<li>能读取 Pyth 喂价并意识到"链上价格可能陈旧"的风险。</li>
+</ul></div>
+
+<div class="pager"><a href="08-sol-anchor.html"><b>上一篇</b>← SOL 篇 II：Rust 与 Anchor 合约开发</a><a class="next" href="10-tron.html"><b>下一篇</b>TRON 篇：波场钱包与 USDT →</a></div>
+</main></body></html>

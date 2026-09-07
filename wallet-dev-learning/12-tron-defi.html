@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRON 篇 III：DeFi 与支付应用实战</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html" class="cur">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">TRON 篇 III：DeFi 与支付应用实战</span><span class="chain chain-tron">TRON</span></header>
+<main class="doc">
+<h1>TRON 篇 III：DeFi 与支付应用实战</h1><p class="subtitle">掌握 TRON 的 DeFi 生态，并用完整可运行的代码搭出一个生产级 USDT-TRC20 商户收款系统（充值监听、归集、对账、提现风控）。主要参考：JustLend DAO 文档、SUN.io 文档、TronGrid API。</p>
+<div class="goals"><b>本章目标：</b>
+<ol>
+<li>画出 TRON DeFi 生态地图，说清 USDT-TRC20、JustLend、SUN.io、USDD、SunPump、BTTC 各自的角色；</li>
+<li>设计一套 HD 派生“一单一址”的 USDT 商户收款架构；</li>
+<li>写出充值地址批量生成、入账监听（含防假 USDT 白名单）、归集（两步流程）、对账的完整代码；</li>
+<li>制定确认策略与提现/代付风控清单；</li>
+<li>能用代码片段与成本对比表说明 JustLend 交互、SUN.io 兑换路径、Energy 三种获取方案的成本权衡。</li>
+</ol></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. TRON DeFi 生态地图</a>
+<a href="#s2">2. USDT-TRC20：支付首选</a>
+<a href="#s3">3. JustLend DAO：借贷龙头</a>
+<a href="#s4">4. SUN.io / SunSwap：AMM 兑换</a>
+<a href="#s5">5. USDD、SunPump 与 BTTC</a>
+<a href="#s6">6. 核心实战：商户收款系统架构</a>
+<a href="#s7">7. 充值地址批量生成</a>
+<a href="#s8">8. 入账监听器（防假 USDT）</a>
+<a href="#s9">9. 确认策略：1 确认 vs 固化</a>
+<a href="#s10">10. 归集脚本（两步流程）</a>
+<a href="#s11">11. 余额对账与异常处理</a>
+<a href="#s12">12. 提现与代付风控清单</a>
+<a href="#s13">13. JustLend 交互代码示例</a>
+<a href="#s14">14. SUN.io 兑换路径说明</a>
+<a href="#s15">15. Energy 租赁降本测算</a>
+<a href="#s16">16. 前端收银台集成</a>
+<a href="#s17">17. Webhook 回调与订单状态机</a>
+<a href="#s18">18. 热钱包安全：多签与限额</a>
+<a href="#s19">19. 监控、告警与审计</a>
+<a href="#s20">20. 安全攻击面与防护总览</a>
+</div>
+
+<h2 id="s1">1. TRON DeFi 生态地图</h2>
+<p>TRON 的 DeFi 生态围绕“稳定币支付 + 借贷 + 兑换”三件套展开，整体比以太坊更偏<strong>支付与高频小额</strong>场景。一图概览：</p>
+<div class="grid c3">
+<div class="card"><h4>USDT-TRC20</h4><p>支付基石，万亿级流通，亚洲 OTC/商户首选。快、便宜、稳定。</p></div>
+<div class="card"><h4>JustLend DAO</h4><p>借贷龙头：存款得 jToken、借款、清算，并提供 Energy 租赁市场。</p></div>
+<div class="card"><h4>SUN.io / SunSwap</h4><p>AMM 兑换与稳定币互换，SunSwap V2/V3，TRON 上的 Uniswap 等价物。</p></div>
+<div class="card"><h4>USDD</h4><p>TRON 原生去中心化稳定币，由超额抵押支撑，用于生态结算。</p></div>
+<div class="card"><h4>SunPump</h4><p>meme 发射平台，类 pump.fun，催生大量新代币与社区投机。</p></div>
+<div class="card"><h4>BTTC</h4><p>BitTorrent Chain 跨链桥，把 TRON 资产与 ETH/BSC 等链打通。</p></div>
+</div>
+<div class="note"><b>定位记忆：</b>若把以太坊 DeFi 比作“复杂金融乐高”，TRON DeFi 更像“支付 + 简单理财”——它的强项不是复杂衍生品，而是<strong>让稳定币在全球范围内以秒级、近乎免费地流动</strong>。</div>
+
+<h3>1.1 各组件详解</h3>
+<p><b>为什么 TRON 适合支付而非复杂金融？</b>根本原因在于资源模型与出块速度：3 秒出块让支付体验接近实时，资源质押让高频小额转账的边际成本趋近于零，而 DPoS 的较低去中心化程度又换来了高吞吐。这些特性天然契合“稳定币在全球流动”的需求，而非高价值的复杂衍生品清算。理解了这一点，你就能判断什么业务该放 TRON、什么业务仍该留在以太坊。</p>
+
+<h3>1.2 接入优先级建议</h3>
+<p>对钱包/支付团队，建议按以下顺序接入 TRON DeFi 能力，风险与收益递增：</p>
+<ul>
+<li><b>第一优先：USDT-TRC20 收付款</b>——确定性最高、需求最大，本篇第 6–12 节已完整覆盖；</li>
+<li><b>第二优先：Energy 策略（质押/租赁）</b>——直接决定成本，影响利润，见第 15 节；</li>
+<li><b>第三优先：JustLend 存款生息</b>——闲置资金增值，接口与 TRC-20 类似，见第 13 节；</li>
+<li><b>第四优先：SUN.io 兑换</b>——资金调度与回血，需做好滑点保护，见第 14 节；</li>
+<li><b>谨慎评估：SunPump / BTTC 跨链</b>——高波动或高风险的组件，仅在明确业务需求时接入并加严风控。</li>
+</ul>
+<div class="tip"><b>落地节奏：</b>先让 USDT 收款跑通并盈利，再逐步叠加 Energy 优化与理财/兑换能力。不要一上来就全栈接入，避免把复杂度与安全风险一次性引入生产。</div>
+<p><b>USDT-TRC20</b>：Tether 在 TRON 发行的美元稳定币，是整条链流动性的锚。它的成功源于 TRON 的资源模型——对于“每天几十万笔小额转账”的支付场景，质押/租赁 Energy 后边际成本极低，这是 ETH 上做不到的体验。</p>
+<p><b>JustLend DAO</b>：由孙宇晨系基金推动的借贷协议，采用 DAO 治理（JST 治理代币）。它不仅提供存款生息与抵押借款，还把“Energy 租赁”做成了市场，商户可直接在此按需租用 Energy，省去自质押的资金占用。</p>
+<p><b>SUN.io / SunSwap</b>：SUN.io 是收益聚合 + 稳定币兑换门户，底层 SunSwap 是 TRON 原生 AMM。SunSwap V2 是经典恒定乘积池，V3 引入集中流动性（类似 Uniswap V3），为稳定币对提供更优滑点。它是支付系统做“USDT ↔ TRX/USDD”清结算的通道。</p>
+<p><b>USDD</b>：TRON DAO  Reserve 发行的去中心化稳定币，由 BTC/TRX/USDC 等超额抵押支撑，目标锚定 1 美元。它更多用于生态内结算与收益场景，流通认知度仍低于 USDT。</p>
+<p><b>SunPump</b>：类 pump.fun 的 meme 发射平台，降低了发币门槛，催生大量社区代币。对钱包开发者是“风险提示”信号——必须明确区分“平台接受的资产（如 USDT）”与“用户自发的未知代币”，绝不对未知代币做自动入账。</p>
+<p><b>BTTC（BitTorrent Chain）</b>：跨链桥，把 TRON 与以太坊、BSC 等连接。跨链采用“源链锁定 + 目标链铸造”机制，资金调度方便，但桥本身历史上是黑客高发区，接入时需严格校验跨链消息与合约白名单。</p>
+
+<h2 id="s2">2. USDT-TRC20：支付首选</h2>
+<ul>
+<li><b>流通规模</b>：Tether 在 TRON 上发行的 USDT 长期是各链中最大份额之一，链上转账笔数极高。</li>
+<li><b>为什么是支付首选</b>：① 约 3 秒确认、体验接近实时；② 资源充足时转账近乎免费；③ 地址简短（T 开头）、生态钱包（TronLink）普及，用户门槛低。</li>
+<li><b>主网合约地址</b>：<code>TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy</code>（务必在代码中硬编码为白名单）。</li>
+<li><b>精度</b>：6 位小数，转账金额 = 数量 × 10^6。</li>
+</ul>
+<div class="warn"><b>安全底线：</b>USDT 的“成功”也引来大量<strong>同名诈骗代币</strong>。它们复制 USDT 的 name/symbol，却用不同合约地址，诱导用户误以为是真 USDT。任何监听与入账逻辑都必须<strong>以合约地址白名单为准</strong>，见第 8 节。</div>
+
+<h3>2.1 转账成本实测</h3>
+<p>在 USDT 收款系统里，单笔转账成本直接决定利润率。下表给出不同资源策略下的实测量级（主网常见参数，实际以链上为准）：</p>
+<table>
+<tr><th>场景</th><th>所需 Energy</th><th>成本（自有 Energy 充足）</th><th>成本（燃烧 TRX）</th></tr>
+<tr><td>用户 → 充值地址 transfer</td><td>~13800</td><td>免费（用户侧资源）</td><td>用户侧 ~3.8 TRX</td></tr>
+<tr><td>充值地址 → 热钱包 transfer</td><td>~13800</td><td>近乎免费（若消耗热钱包资源）</td><td>~3.8 TRX/笔</td></tr>
+<tr><td>热钱包 → 用户 提现</td><td>~13800</td><td>近乎免费（热钱包自质押）</td><td>~3.8 TRX/笔</td></tr>
+</table>
+<pre><code>// 收款系统单笔成本快速估算
+const ENERGY_PER_TX = 13800;
+const BURN_TRX = ENERGY_PER_TX * 0.00028; // 无 Energy 时单笔燃烧 TRX
+console.log("无 Energy 时单笔 USDT 转账燃烧:", BURN_TRX.toFixed(2), "TRX");
+// 若平台日均 5 万笔且无 Energy：5e4 * 3.8 ≈ 19 万 TRX/天
+// 自质押/租赁后这笔费用可降为近乎 0 或大幅降低 —— 这是支付系统盈利关键
+</code></pre>
+<div class="note"><b>数字敏感性：</b>TRON 上单笔 USDT 转账的 Energy 消耗与燃烧单价会随网络参数调整，上面是常见量级。生产系统应<strong>定时拉取链上 getEnergyFee 等参数动态计算</strong>，不要写死 3.8 TRX，否则费用估算会随链上升级而失准。</div>
+<p>把成本模型吃透后，你会发现 TRON 支付的竞争力本质上来自“资源的精细化运营”：谁把 Energy 用得更省，谁就能在同等费率下赚更多。这也是本篇反复强调质押/租赁与动态测算的原因。</p>
+
+<h2 id="s3">3. JustLend DAO：借贷龙头</h2>
+<p><strong>JustLend DAO</strong> 是 TRON 上最大的借贷协议，功能与以太坊的 Aave/Compound 类比：</p>
+<ul>
+<li><b>存款（Supply）</b>：存入 TRX/USDT/USDD 等，获得对应的 <strong>jToken</strong>（如 jUSDT），代表你的存款凭证，并随利息增长；</li>
+<li><b>借款（Borrow）</b>：以存款为抵押借出资产，需维持<strong>健康因子</strong>（抵押率）；</li>
+<li><b>清算（Liquidation）</b>：抵押不足时，清算人可折价接管抵押品，维持系统偿付；</li>
+<li><b>Energy Rental 市场</b>：JustLend 还提供 Energy 质押/租赁，商户可在此租用 Energy 降本（见第 15 节）。</li>
+</ul>
+<p>钱包/后台接入 JustLend，本质是调用其已部署的借贷合约（jToken 合约的 <code>supply</code>/<code>borrow</code>/<code>repay</code>/<code>redeem</code> 等方法），与调用普通 TRC-20 无异，只是多了利息 accrual 逻辑。</p>
+
+<h2 id="s4">4. SUN.io / SunSwap：AMM 兑换</h2>
+<p><strong>SUN.io</strong> 是 TRON 上的收益与兑换聚合平台，底层 AMM <strong>SunSwap</strong>（V2 类似 Uniswap V2 的 x*y=k 恒定乘积，V3 引入集中流动性）：</p>
+<ul>
+<li>稳定币兑换（USDT↔USDD↔USDJ）滑点极低，是支付系统的“清结算”通道；</li>
+<li>路径兑换：A→B 可经路由合约自动拆成 A→USDT→B；</li>
+<li>后台若需把收到的 USDT 换成其他资产（如冲抵成本换 TRX），走 SunSwap Router 的 <code>swapExactTokensForTokens</code>。</li>
+</ul>
+<h3>4.1 V2 还是 V3？</h3>
+<p>SunSwap V2 是恒定乘积池（x*y=k），适合绝大多数稳定币/普通对，流动性分散、上手简单；V3 引入<strong>集中流动性</strong>，流动性提供者把资金集中在特定价格区间，资本效率更高、滑点更低，但 LP 管理更复杂、需主动调仓。支付系统的“USDT↔TRX 回血”若量大且价格区间稳定，V3 更省滑点；若只是偶发兑换，V2 够用且省心。</p>
+<div class="tip"><b>调用差异：</b>V2 Router 用 <code>swapExactTokensForTokens</code>，V3 Router 用 <code>exactInput</code>/<code>exactInputSingle</code>（需指定 fee tier 如 0.3%/1%）。接入前先确认你调用的是哪个版本的 Router 地址与 ABI，二者不通用。</div>
+<p>到此，TRON DeFi 三大能力——<strong>支付（USDT）、理财（JustLend）、兑换（SUN.io）</strong>——都已给出可直接落地的代码骨架。把它们组合起来，你就能构建出一套从收款、增值到结算的完整资金闭环。</p>
+
+<h2 id="s5">5. USDD、SunPump 与 BTTC</h2>
+<ul>
+<li><b>USDD</b>：TRON 生态原生稳定币，由多种加密资产超额抵押，可作为支付与结算的另一个选择（但流通与认知度低于 USDT）。</li>
+<li><b>SunPump</b>：meme 币发射平台，类 pump.fun。对钱包开发者的意义：要能识别“用户发的任意代币”，并在展示时标注风险、绝不把未知代币当作可入账资产。</li>
+<li><b>BTTC（BitTorrent Chain）</b>：跨链桥，把 TRON 资产桥接到以太坊/BSC 等，便于资金在多条链间调度。跨链涉及“锁定+铸造”，是风控重点之一。</li>
+</ul>
+<div class="tip"><b>生态取舍：</b>本篇的支付实战聚焦 <strong>USDT-TRC20</strong>，因为它最稳、最通用；其余组件（JustLend/SUN.io）作为“资金增值/兑换”的补充能力，按需接入。</div>
+
+<h2 id="s6">6. 核心实战：商户收款系统架构</h2>
+<p>目标：搭建一个能<strong>自动识别用户 USDT 充值、归集到热钱包、定期对账、安全提现</strong>的商户系统。核心设计原则：</p>
+<table>
+<tr><th>组件</th><th>职责</th><th>关键设计</th></tr>
+<tr><td>充值地址（一单一址）</td><td>每个订单/用户分配独立地址收 USDT</td><td>用 HD 路径 m/44'/195'/0'/0/i 派生，i 为订单序号</td></tr>
+<tr><td>热钱包</td><td>归集、提现、付手续费</td><td>持有少量 TRX 做手续费，私钥离线/多签保管</td></tr>
+<tr><td>冷钱包</td><td>大额存储</td><td>与网络隔离，仅接收归集，不主动对外转账</td></tr>
+<tr><td>监听服务</td><td>轮询 TRC-20 Transfer 事件</td><td>按合约白名单 + to 过滤，确认后回调业务</td></tr>
+<tr><td>对账服务</td><td>链上余额 vs 本地账本</td><td>定时扫描，发现差异告警</td></tr>
+</table>
+<div class="note"><b>为什么“一单一址”？</b>每个订单/用户一个独立充值地址，入账时无需解析 memo/Tag，只需看 <code>to == 该地址</code> 即可精确归属，极大简化对账，并天然隔离各用户资金。代价是需要管理大量地址——用 HD 派生即可用一把种子推导出无穷地址，且不增加密钥管理负担。</div>
+
+<h3>6.1 数据模型设计</h3>
+<p>后端至少需要三张核心表支撑整套流程：</p>
+<pre><code>// 简化的数据库表结构（伪 SQL，便于理解）
+// 1) 充值地址表：每个订单分配一个，记录派生路径与私钥引用
+CREATE TABLE deposit_address (
+  id            BIGINT PRIMARY KEY,
+  order_id      VARCHAR(64) UNIQUE,   -- 业务订单号
+  hd_index      INT NOT NULL,         -- i，路径 m/44'/195'/0'/0/i
+  path          VARCHAR(64),
+  address_base58 VARCHAR(64) UNIQUE,
+  address_hex    VARCHAR(64),
+  private_ref    VARCHAR(128),        -- 加密后的私钥引用（如 KMS key id），绝不存明文
+  assigned_at    TIMESTAMP,
+  swept_at      TIMESTAMP NULL        -- 归集时间
+);
+
+// 2) 入账事件表：监听到的每笔 Transfer（去重靠 txID）
+CREATE TABLE deposit_event (
+  tx_id         VARCHAR(64) PRIMARY KEY,
+  order_id      VARCHAR(64),
+  from_addr     VARCHAR(64),
+  to_addr       VARCHAR(64),
+  contract_addr VARCHAR(64),
+  amount_usdt   DECIMAL(20,6),
+  block_num     BIGINT,
+  confirm_state VARCHAR(16),          -- pending / solidified
+  created_at    TIMESTAMP
+);
+
+// 3) 提现表：受风控约束的资金出口
+CREATE TABLE withdrawal (
+  id            BIGINT PRIMARY KEY,
+  user_addr     VARCHAR(64),
+  amount_usdt   DECIMAL(20,6),
+  status        VARCHAR(16),          -- reviewed / signed / broadcast / done / rejected
+  approver      VARCHAR(64),
+  tx_id         VARCHAR(64),
+  created_at    TIMESTAMP
+);
+</code></pre>
+<div class="tip"><b>私钥绝不入库明文：</b><code>private_ref</code> 只存“加密密文引用”（如 HSM/KMS 里的句柄），应用运行时通过授权解密到内存。即便数据库泄露，攻击者也无法直接拿走资金。</div>
+
+<h2 id="s7">7. 充值地址批量生成</h2>
+<p>用 BIP39 种子 + 路径 <code>m/44'/195'/0'/0/i</code> 批量派生充值地址。注意 TRON 的 coin type 是 195。</p>
+<pre><code>// gen-addresses.js —— 批量生成商户充值地址（m/44'/195'/0'/0/i）
+const bip39 = require("bip39");
+const HDKey = require("hdkey");
+const TronWeb = require("tronweb");
+
+const MNEMONIC = "你的商户助记词 12/24 词";
+const tronWeb = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+
+async function genDepositAddresses(count) {
+  const seed = await bip39.mnemonicToSeed(MNEMONIC);
+  const root = HDKey.fromMasterSeed(seed);
+  const addrs = [];
+  for (let i = 0; i &lt; count; i++) {
+    const path = `m/44'/195'/0'/0/${i}`;
+    const child = root.derive(path);
+    const pk = child.privateKey.toString("hex");
+    const tw = new TronWeb({ fullHost: "https://nile.trongrid.io", privateKey: pk });
+    addrs.push({
+      index: i,
+      path,
+      privateKey: pk,            // 仅服务端安全存储
+      base58: tw.defaultAddress.base58,
+      hex: tw.defaultAddress.hex,
+    });
+  }
+  return addrs;
+}
+
+// 生成 10 个充值地址并打印（生产应入库）
+genDepositAddresses(10).then((list) =&gt; {
+  list.forEach((a) =&gt; console.log(`#${a.index} ${a.path} -&gt; ${a.base58}`));
+});
+</code></pre>
+<div class="warn"><b>私钥保管：</b>充值地址的私钥同样要<strong>加密存储</strong>（如 KMS/HashiCorp Vault）。虽然资金会被及时归集走，但若私钥泄露，攻击者可能在归集前抢先转走用户刚充入的 USDT（见第 10 节“先转 TRX 激活/手续费”的 race 风险）。</div>
+
+<h2 id="s8">8. 入账监听器（防假 USDT）</h2>
+<p>监听器轮询 TronGrid 的 TRC-20 Transfer 事件，但必须做两条过滤：</p>
+<ul>
+<li><b>合约白名单</b>：只认真正的 USDT 合约地址，<strong>拒绝一切其他合约</strong>的 Transfer（防假 USDT 同名攻击）；</li>
+<li><b>to 精确匹配</b>：只处理 <code>to</code> 命中我方充值地址的交易；</li>
+<li><b>金额与确认</b>：解析 <code>value</code>（×10^-6）并按确认策略处理（见第 9 节）。</li>
+</ul>
+<pre><code>// listener.js —— USDT 入账监听（防假 USDT 攻击版）
+const TronWeb = require("tronweb");
+require("dotenv").config();
+
+const tronWeb = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+
+// 合约白名单：只允许真实 USDT（主网）与测试网对应地址
+const USDT_MAINNET = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy";
+const WHITELIST = new Set([USDT_MAINNET.toLowerCase()]);
+
+// 我方充值地址集合（由 genDepositAddresses 入库后加载）
+const MY_DEPOSITS = new Map(); // hex -&gt; { index, base58 }
+
+function loadDeposits() {
+  // 实际从数据库加载：MY_DEPOSITS.set(hex, meta)
+}
+
+async function handleTransfer(ev) {
+  const contractAddr = (ev.contract_address || "").toLowerCase();
+  // ① 合约白名单校验：非白名单合约直接忽略（防伪造 USDT）
+  if (!WHITELIST.has(contractAddr)) {
+    console.log("忽略非白名单合约:", contractAddr);
+    return;
+  }
+  const to = (ev.result.to || "").toLowerCase();
+  const from = (ev.result.from || "").toLowerCase();
+  const value = Number(ev.result.value); // 最小单位
+  const amount = value / 1e6;             // 转为 USDT 数量
+
+  // ② to 精确匹配我方充值地址
+  const deposit = MY_DEPOSITS.get(to);
+  if (!deposit) return; // 不是给我们的
+
+  console.log(`[入账] 订单#${deposit.index} 收到 ${amount} USDT, tx=${ev.transaction}`);
+  // ③ 触发业务回调（先按“1 确认”通知，固化后再最终入账）
+  await notifyBusiness({ orderIndex: deposit.index, txID: ev.transaction, amount, from });
+}
+
+async function poll(sinceTs) {
+  const events = await tronWeb.getEventResult(USDT_MAINNET, {
+    eventName: "Transfer",
+    since: sinceTs,
+    size: 100,
+    orderBy: "block_timestamp,asc",
+  });
+  for (const ev of events) {
+    await handleTransfer(ev);
+  }
+}
+
+// 每 10 秒轮询一次（生产可用 TronGrid Webhook / WebSocket 替代）
+loadDeposits();
+setInterval(() =&gt; poll(Date.now() - 60 * 1000), 10000);
+</code></pre>
+<div class="warn"><b>伪造同名代币攻击详解：</b>攻击者部署一个合约，name="Tether USD"，symbol="USDT"，但地址不是真 USDT。他们向你的地址“空投”大量假 USDT 并制造 Transfer 事件。若监听器只按 <code>symbol</code> 或 <code>value</code> 判断，就会误认为真入账。正确做法：<strong>永远用 <code>contract_address</code> 是否在白名单内判断资产真伪</strong>，symbol/name 不可信。</div>
+
+<h2 id="s9">9. 确认策略：1 确认 vs 固化</h2>
+<table>
+<tr><th>策略</th><th>耗时</th><th>安全性</th><th>适用</th></tr>
+<tr><td><b>1 确认</b>（打包即知）</td><td>约 3 秒</td><td>可能因极短分叉回滚</td><td>即时 UX 通知、小额、内部状态</td></tr>
+<tr><td><b>固化（solidified）</b></td><td>约 19 秒（~6 区块）</td><td>不可逆，业务最终确认</td><td>正式入账、对账、放行资金</td></tr>
+</table>
+<pre><code>// confirm.js —— 区分“首次通知”与“最终固化入账”
+async function isSolidified(txID) {
+  const info = await tronWeb.trx.getTransactionInfo(txID);
+  if (!info || !info.blockNumber) return false;
+  const head = await tronWeb.trx.getBlock("latest");
+  // 已确认区块数 >= 6 视为固化（约 19 秒）
+  return (head.block_header.raw_data.number - info.blockNumber) &gt;= 6;
+}
+
+// 业务流：监听拿到 1 确认后更新“待确认”状态；
+// 定时任务对“待确认”订单调用 isSolidified，固化后改为“已入账”并触发放行
+</code></pre>
+<div class="tip"><b>推荐流程：</b>“1 确认 → 标记 pending + 通知用户；固化 → 标记 confirmed + 放行/对账”。这样既快又稳，兼顾体验与安全。</div>
+
+<h2 id="s10">10. 归集脚本（两步流程）</h2>
+<p>充值地址上的 USDT 需要定期归集到热钱包。难点：<strong>转账 USDT 需要 Energy，而新/轻充值地址自己没有 TRX 付手续费</strong>。因此采用两步流程：</p>
+<ol>
+<li><b>第一步</b>：热钱包向充值地址转一小笔 <strong>TRX</strong>（如 1~5 TRX），既<em>激活</em>地址（若未激活），又提供转账所需的 Bandwidth/Energy 燃烧费；</li>
+<li><b>第二步</b>：用充值地址私钥签名 USDT 转账到热钱包（feeLimit 由该地址的 TRX 燃烧覆盖）。</li>
+</ol>
+<pre><code>// sweep.js —— 把单个充值地址的 USDT 归集到热钱包（两步流程）
+const TronWeb = require("tronweb");
+require("dotenv").config();
+
+const HOT_WALLET = "T热钱包地址";
+const USDT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy";
+
+const tronWeb = new TronWeb({ fullHost: "https://nile.trongrid.io" });
+
+async function sweepOne(depositPk, depositBase58) {
+  const tw = new TronWeb({ fullHost: "https://nile.trongrid.io", privateKey: depositPk });
+
+  // 0. 查余额
+  const acct = await tw.trx.getAccount(depositBase58);
+  const hasTrx = acct && acct.balance &gt; 0;
+
+  // 1. 若充值地址没有 TRX，热钱包先转一笔做手续费（并顺带激活）
+  if (!hasTrx) {
+    const fundTx = await tronWeb.transactionBuilder.sendTrx(
+      depositBase58, tronWeb.toSun(2), HOT_WALLET
+    );
+    const signed = await tronWeb.trx.sign(fundTx, process.env.HOT_PK);
+    await tronWeb.trx.broadcast(signed);
+    await new Promise((r) =&gt; setTimeout(r, 5000)); // 等激活/到账
+  }
+
+  // 2. 用充值地址私钥转走全部 USDT
+  const token = await tw.contract().at(USDT);
+  const raw = await token.balanceOf(depositBase58).call();
+  const bal = Number(raw);
+  if (bal &lt;= 0) { console.log("无 USDT，跳过"); return; }
+
+  // 留少量不转（或全转，手续费已由 TRX 覆盖）
+  const tx = await token.transfer(HOT_WALLET, bal).send({
+    feeLimit: tronWeb.toSun(20),
+  });
+  console.log(`归集 ${depositBase58} -&gt; 热钱包, tx=${tx}, amount=${bal / 1e6} USDT`);
+}
+
+// 遍历所有充值地址执行归集（生产按余额阈值批量）
+// deposits = [{ privateKey, base58 }, ...]
+// for (const d of deposits) await sweepOne(d.privateKey, d.base58);
+</code></pre>
+<div class="tip"><b>Energy 优化：</b>若热钱包<strong>质押了充足 Energy</strong>，可让归集交易“消耗热钱包的资源”而非充值地址燃烧 TRX——TRON 有 <code>consume_user_resource_percent</code> 参数控制由谁承担资源。配置得当，归集近乎零成本。否则每笔燃烧约 3.8 TRX，量大时需租赁 Energy（第 15 节）。</div>
+
+<h2 id="s11">11. 余额对账与异常处理</h2>
+<p>对账保证“链上真实资产 = 本地账本记录”。关键做法：</p>
+<ul>
+<li><b>定时全量扫描</b>：对每个充值地址调 <code>balanceOf</code> 与 <code>getAccount</code>，比对本地“应归集余额”；</li>
+<li><b>交易级对账</b>：把监听到的每笔入账（txID、金额、订单）与业务订单表逐项匹配；</li>
+<li><b>差异告警</b>：发现“链上有但账本无”（漏监听）或“账本有但链上无”（未确认/回滚）立即告警。</li>
+</ul>
+<pre><code>// reconcile.js —— 简易对账
+async function reconcile(deposits, localLedger) {
+  let mismatch = 0;
+  for (const d of deposits) {
+    const token = await tronWeb.contract().at(USDT);
+    const chainBal = Number(await token.balanceOf(d.base58).call()) / 1e6;
+    const localBal = localLedger[d.base58] || 0; // 本地记录的“未归集余额”
+    if (Math.abs(chainBal - localBal) &gt; 1e-6) {
+      console.warn(`对账差异 ${d.base58}: 链上=${chainBal} 本地=${localBal}`);
+      mismatch++;
+    }
+  }
+  console.log(mismatch === 0 ? "对账一致" : `发现 ${mismatch} 处差异，请排查`);
+}
+
+// 异常处理：对“已通知但长时间未固化”的订单单独复查，
+// 避免回滚导致误入账；对“链上已到但监听漏掉”的用全量扫描兜底。
+</code></pre>
+<div class="warn"><b>常见异常：</b>① 监听服务宕机期间漏掉事件——用“全量余额扫描”兜底；② 用户向<strong>未激活</strong>的充值地址打 USDT 失败——需在分配地址时就预激活；③ 假 USDT 事件干扰——白名单已解决；④ 归集时充值地址 TRX 被意外花光——两步流程要留足手续费。</div>
+
+<h2 id="s12">12. 提现与代付风控清单</h2>
+<p>提现（用户把 USDT 提走）与代付（平台主动付 USDT 给外部）是资金出口，必须有严格风控：</p>
+<table>
+<tr><th>风控项</th><th>做法</th></tr>
+<tr><td>频率限制</td><td>单地址/单账户每日提现次数与额度上限</td></tr>
+<tr><td>地址白名单</td><td>常用提现地址预先审核入库，新地址需人工复核/小额试转</td></tr>
+<tr><td>二次确认</td><td>大额提现需 2 人多签或邮件/2FA 二次授权</td></tr>
+<tr><td>链上校验</td><td>提现前校验目标地址是合法 TRON 地址且非黑名单</td></tr>
+<tr><td>额度分层</td><td>小额自动放行，中额主管批，大额 CEO/冷签批</td></tr>
+<tr><td>监控告警</td><td>异常大额、异常时间、异常地址实时告警</td></tr>
+<tr><td>冷热分离</td><td>热钱包只留日常额度，超额从冷钱包分批调拨</td></tr>
+</table>
+<pre><code>// withdraw.js —— 受风控约束的提现（伪代码骨架）
+async function withdraw(userAddr, amountUsdt, ctx) {
+  assert(ctx.rateLimit.ok(userAddr), "频率超限");
+  assert(isValidTronAddr(userAddr), "地址非法");
+  assert(await inWhitelist(userAddr) || ctx.needManualReview, "新地址需复核");
+  assert(amountUsdt &lt;= ctx.dailyQuota(userAddr), "超日限额");
+
+  const token = await tronWeb.contract().at(USDT);
+  const amt = Math.floor(amountUsdt * 1e6);
+  const tx = await token.transfer(userAddr, amt).send({ feeLimit: tronWeb.toSun(20) });
+
+  // 大额走多签/二次确认
+  if (amountUsdt &gt; BIG_THRESHOLD) await requireSecondApproval(tx);
+  return tx;
+}
+</code></pre>
+<div class="warn"><b>资金安全总原则：</b>私钥永远不下线、热钱包只留日常额度、所有出口有白名单+二次确认、链上行为可审计可回溯。这是支付系统的生命线。</div>
+
+<h2 id="s13">13. JustLend 交互代码示例</h2>
+<p>接入 JustLend 即调用其已部署的 jToken 借贷合约。以下以“存款/查询”为例（地址以官方文档为准，生产需核对）：</p>
+<pre><code>// justlend.js —— 存款 USDT 到 JustLend 并查询 jToken 余额（示例骨架）
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({
+  fullHost: "https://api.trongrid.io",
+  privateKey: process.env.MAIN_PRIVATE_KEY,
+});
+
+// 以下地址为示意，务必以 JustLend 官方文档最新合约地址替换
+const JUSDT = "TSmartContractAddressOf_jUSDT";
+const USDT  = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy";
+
+async function supply(amtUsdt) {
+  const amt = Math.floor(amtUsdt * 1e6);
+  // 1. 先 approve jUSDT 合约可花你的 USDT
+  const usdt = await tronWeb.contract().at(USDT);
+  await usdt.approve(JUSDT, amt).send({ feeLimit: tronWeb.toSun(20) });
+  // 2. 调用 jUSDT.mint(amount) 存款
+  const jusdt = await tronWeb.contract().at(JUSDT);
+  const tx = await jusdt.mint(amt).send({ feeLimit: tronWeb.toSun(30) });
+  console.log("存款 tx:", tx);
+}
+
+async function queryBalance() {
+  const jusdt = await tronWeb.contract().at(JUSDT);
+  const bal = await jusdt.balanceOf(tronWeb.defaultAddress.base58).call();
+  console.log("jUSDT 余额(含利息):", Number(bal) / 1e6);
+}
+
+// supply(100); queryBalance();
+</code></pre>
+<div class="note"><b>提示：</b>JustLend 的 jToken 采用<strong>余额随利息增长</strong>模型（exchangeRate），<code>balanceOf</code> 返回的 jToken 数量需乘以 exchangeRate 才是实际 USDT 本息。具体以官方 ABI 与文档为准。</div>
+<div class="tip"><b>地址从哪里来？</b>JustLend 各 jToken 合约地址（jUSDT/jTRX/jUSDD 等）与 Router 地址<strong>必须来自官方文档或链上 verified 合约</strong>，切勿从第三方复制粘贴，避免接入被篡改的恶意合约。上线前在 Tronscan 核对合约源码与持币分布。</div>
+<p>把 JustLend、SUN.io 与前面的 USDT 收款结合起来，你的平台就同时具备“收钱、让钱生钱、把钱换成需要的资产”三种能力——这正是 TRON DeFi 生态对支付型业务的完整价值。</p>
+<div class="quote">本篇核心一句话：TRON 支付的竞争力来自<strong>对 Energy 资源的精细化运营</strong>与<strong>纵深防御的安全架构</strong>。技术细节会随链上升级变化，但这两套方法论不变。</div>
+<p>至此，TRON 三篇（概念与钱包、TVM 合约、DeFi 与支付）已全部完成。你已具备在 TRON 上开发钱包、部署合约、构建生产级支付系统的完整能力。</p>
+
+<h3>13.1 借款与还款</h3>
+<p>存款后可用存款作抵押借出其他资产。借款前需先了解<strong>抵押率（collateral factor）</strong>与健康因子，避免被清算：</p>
+<pre><code>// justlend-borrow.js —— 抵押借出 USDT（示例骨架）
+async function borrow(jUsdtAddr, usdtMarket, borrowAmountUsdt) {
+  const amt = Math.floor(borrowAmountUsdt * 1e6);
+  const jtoken = await tronWeb.contract().at(jUsdtAddr);
+  // 1. 先 enterMarkets（把存款市场纳入抵押）
+  await jtoken.enterMarkets([usdtMarket]).send({ feeLimit: tronWeb.toSun(30) });
+  // 2. 借出
+  const tx = await jtoken.borrow(amt).send({ feeLimit: tronWeb.toSun(30) });
+  console.log("借款 tx:", tx);
+}
+
+async function repay(jUsdtAddr, repayAmountUsdt) {
+  const amt = Math.floor(repayAmountUsdt * 1e6);
+  const usdt = await tronWeb.contract().at(USDT);
+  await usdt.approve(jUsdtAddr, amt).send({ feeLimit: tronWeb.toSun(20) });
+  const jtoken = await tronWeb.contract().at(jUsdtAddr);
+  const tx = await jtoken.repayBorrow(amt).send({ feeLimit: tronWeb.toSun(30) });
+  console.log("还款 tx:", tx);
+}
+</code></pre>
+<h3>13.2 清算机制</h3>
+<p>当抵押资产贬值、健康因子跌破 1，清算人可代借款人还款并折价拿走抵押品（含清算罚金）。对商户而言，<strong>不要把全部流动性压在单一抵押上</strong>，并实时监控健康因子，低于阈值前主动还款或追加抵押，避免被清算造成额外损失。</p>
+<pre><code>// 监控健康因子（伪代码，具体字段以 JustLend 合约的 getAccountSnapshot/liquidateBorrow 为准）
+async function checkHealth(jtokenAddr) {
+  const jt = await tronWeb.contract().at(jtokenAddr);
+  const snap = await jt.getAccountSnapshot(tronWeb.defaultAddress.base58).call();
+  // snap 含 [error, jTokenBalance, borrowBalance, exchangeRate]
+  console.log("借款余额(应付):", Number(snap[2]) / 1e6);
+  // 用预言机价换算抵押价值，计算健康因子；&lt;1 即触发清算风险
+}
+</code></pre>
+
+<h2 id="s14">14. SUN.io 兑换路径说明</h2>
+<p>支付系统可能需要把收到的 USDT 兑换成 TRX（用于付手续费或结算），走 SunSwap Router。核心是“路径（path）”与“最小到账（amountOutMin）”：</p>
+<pre><code>// sunswap.js —— 用 SunSwap Router 把 USDT 换成 TRX（示例骨架）
+const ROUTER = "TSunSwapRouterAddress";   // 以 SUN.io 官方文档为准
+const USDT  = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy";
+const WTRX  = "TWrapTRXAddress";          // WTRX 地址
+
+async function swapUsdtToTrx(amtUsdt) {
+  const amt = Math.floor(amtUsdt * 1e6);
+  const usdt = await tronWeb.contract().at(USDT);
+  await usdt.approve(ROUTER, amt).send({ feeLimit: tronWeb.toSun(20) });
+
+  const router = await tronWeb.contract().at(ROUTER);
+  // path: USDT -&gt; WTRX（再解包为 TRX）
+  const path = [USDT, WTRX];
+  const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 分钟有效期
+  const tx = await router.swapExactTokensForETH(
+    amt,                 // 投入 USDT 量
+    0,                   // amountOutMin（生产须先 quote 留滑点缓冲）
+    path,
+    tronWeb.defaultAddress.base58,
+    deadline
+  ).send({ feeLimit: tronWeb.toSun(50) });
+  console.log("兑换 tx:", tx);
+}
+</code></pre>
+<div class="tip"><b>滑点保护：</b>永远先用 Router 的 <code>getAmountsOut</code> 估算到账量，再设 <code>amountOutMin</code> = 估算 × (1 - 滑点)，避免被夹子/低流动性吃价。生产环境务必做这一步。</div>
+
+<h3>14.1 兑换前先报价（quote）</h3>
+<p>兑换前必须先用 <code>getAmountsOut</code> 拿到预期到账量，再据此设置最小到账，防止滑点被吃：</p>
+<pre><code>// sunswap-quote.js —— 先报价再兑换
+async function quoteAndSwap(amtUsdt, slippage = 0.005) {
+  const usdt = await tronWeb.contract().at(USDT);
+  const router = await tronWeb.contract().at(ROUTER);
+  const amt = Math.floor(amtUsdt * 1e6);
+  const path = [USDT, WTRX];
+  // 1. 报价：投入 amt USDT 能换到多少 WTRX（最小单位）
+  const outs = await router.getAmountsOut(amt, path).call();
+  const expected = Number(outs[outs.length - 1]); // 最后一个即 WTRX 量
+  const minOut = Math.floor(expected * (1 - slippage));
+  console.log("预期到账 WTRX:", expected / 1e6, "最小:", minOut / 1e6);
+
+  // 2. 授权并兑换，使用 minOut 作为 amountOutMin
+  await usdt.approve(ROUTER, amt).send({ feeLimit: tronWeb.toSun(20) });
+  const tx = await router.swapExactTokensForETH(
+    amt, minOut, path, tronWeb.defaultAddress.base58,
+    Math.floor(Date.now() / 1000) + 1200
+  ).send({ feeLimit: tronWeb.toSun(50) });
+  return tx;
+}
+</code></pre>
+<div class="note"><b>为什么支付系统要会兑换？</b>当用户用 USDT 付款、商户需要 TRX 付链上手续费或结算法币时，就需要把 USDT 换成 TRX。把兑换逻辑内建进后台，能让资金自动“回血”，避免热钱包 TRX 枯竭导致无法归集。</div>
+
+<h2 id="s15">15. Energy 租赁降本测算</h2>
+<p>回到成本核心。对高频 USDT 收款/归集，Energy 的获取方式决定利润。三方案对比：</p>
+<table>
+<tr><th>方案</th><th>适用场景</th><th>单笔 USDT 转账成本</th><th>优缺点</th></tr>
+<tr><td><b>自质押</b></td><td>长期稳定高频</td><td>近乎 0（质押 TRX 已承担）</td><td>资金占用，解锁 14 天；量大最省</td></tr>
+<tr><td><b>租赁</b></td><td>短时高峰/偶发大批量</td><td>约 0.5~1.5 TRX/笔（市场波动）</td><td>不占本金，按需租用；单价随行就市</td></tr>
+<tr><td><b>燃烧 TRX</b></td><td>极低频/应急</td><td>约 3.8 TRX/笔</td><td>最简单；成本最高</td></tr>
+</table>
+<pre><code>// energy-cost.js —— 三种方案成本测算（量级示例，以链上实时价为准）
+const PER_TX_ENERGY = 13800;
+const BURN_TRX_PER_ENERGY = 0.00028;     // 燃烧单价
+const RENT_TRX_PER_ENERGY = 0.0001;      // 租赁单价（示例，市场波动）
+const STAKE_TRX = 10000;                  // 自质押本金（假设支撑 10 万笔）
+const TX_COUNT = 100000;
+
+const burnTotal = PER_TX_ENERGY * BURN_TRX_PER_ENERGY * TX_COUNT;     // ≈ 38640 TRX
+const rentTotal = PER_TX_ENERGY * RENT_TRX_PER_ENERGY * TX_COUNT;     // ≈ 13800 TRX
+const stakeCost = STAKE_TRX;                                            // 占用本金，非消耗
+// 若 10 万笔后解锁质押，自质押实际“成本”≈ 资金机会成本；若对比消耗则远低于燃烧
+
+console.log("燃烧方案总成本(TRX):", burnTotal.toFixed(0));
+console.log("租赁方案总成本(TRX):", rentTotal.toFixed(0));
+console.log("自质押占用本金(TRX):", stakeCost, "（非消耗，可解锁）");
+console.log("结论: 高频用自质押/租赁，零星用燃烧");
+</code></pre>
+<div class="tip"><b>降本决策树：</b>日均 &gt; 1000 笔 → <strong>自质押</strong>最省；偶发大批量/活动峰值 → <strong>临时租赁</strong>；偶尔几笔 → 直接<strong>燃烧</strong>。JustLend Energy Rental 与第三方租用市场都可一键租 Energy。</div>
+
+<h2 id="s16">16. 前端收银台集成</h2>
+<p>商户系统给用户看的“收银台”需要：展示订单对应的<strong>专属充值地址</strong>、金额、进度。前端用 TronLink 还能提供“一键复制地址/拉起钱包”的体验。核心是：地址由后端按订单分配（一单一址），前端只展示与轮询状态。</p>
+<pre><code>// cashier.html + cashier.js —— 简易收银台（浏览器内）
+// 后端 API：GET /api/order/:id 返回 { depositAddress, amountUsdt, status }
+async function loadOrder(orderId) {
+  const res = await fetch("/api/order/" + orderId).then(r =&gt; r.json());
+  document.getElementById("addr").innerText = res.depositAddress;
+  document.getElementById("amount").innerText = res.amountUsdt + " USDT";
+  document.getElementById("status").innerText = statusText(res.status);
+  // 用户也可一键用 TronLink 直接转账（需知道精确金额）
+  if (window.tronLink) {
+    document.getElementById("payBtn").onclick = async () =&gt; {
+      const tw = (window.tronLink || window.tron).tronWeb;
+      const usdt = await tw.contract().at("TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy");
+      const amt = Math.floor(res.amountUsdt * 1e6);
+      const tx = await usdt.transfer(res.depositAddress, amt)
+        .send({ feeLimit: tw.toSun(20) });
+      alert("已支付，txID: " + tx);
+    };
+  }
+}
+// 前端每 5 秒轮询一次状态（后端状态由监听服务更新）
+setInterval(() =&gt; loadOrder(ORDER_ID), 5000);
+</code></pre>
+<div class="note"><b>为什么前端不直接生成地址？</b>地址必须由<strong>后端用商户种子派生的第 i 个地址</strong>分配，前端无法也<em>不应</em>掌握种子。否则既破坏“一单一址”的对账闭环，又可能泄露密钥派生路径。前端只消费后端给的地址。</div>
+
+<h2 id="s17">17. Webhook 回调与订单状态机</h2>
+<p>监听服务发现入账后，应通过<strong>Webhook</strong>或消息队列通知业务系统，而不是直接改库。用状态机管理订单生命周期，清晰且易排查：</p>
+<pre><code>// order-state.js —— 订单状态机（伪代码骨架）
+// 状态：CREATED -&gt; PENDING(1确认) -&gt; CONFIRMED(固化) -&gt; SETTLED(已归集) -&gt; (异常: EXPIRED/REVERTED)
+function transition(order, event) {
+  switch (order.status) {
+    case "CREATED":
+      if (event === "first_confirm") return "PENDING";
+      break;
+    case "PENDING":
+      if (event === "solidified") return "CONFIRMED";
+      if (event === "reverted") return "REVERTED";
+      break;
+    case "CONFIRMED":
+      if (event === "swept") return "SETTLED";
+      break;
+  }
+  throw new Error("非法状态转移: " + order.status + " + " + event);
+}
+
+// Webhook 投递（带签名，防伪造回调）
+function signPayload(body, secret) {
+  const crypto = require("crypto");
+  return crypto.createHmac("sha256", secret).update(JSON.stringify(body)).digest("hex");
+}
+// 业务方收到 Webhook 时校验签名，再据 orderId/amount 更新订单并放行权益
+</code></pre>
+<div class="warn"><b>Webhook 安全：</b>回调必须带<strong>签名</strong>（HMAC），业务方校验通过才信。否则攻击者可伪造“已支付”回调骗过系统发放权益。同时 Webhook 要支持<strong>重试与幂等</strong>（同一 txID 只处理一次）。</div>
+
+<h2 id="s18">18. 热钱包安全：多签与限额</h2>
+<p>热钱包是资金出口，必须用 TRON 协议层<strong>多签</strong>（第 I 篇第 9 节）+ 业务层限额双重保护：</p>
+<ul>
+<li><b>协议多签</b>：热钱包 active 权限设 2-of-3，三把 key 分属不同负责人/不同机器；</li>
+<li><b>业务限额</b>：单笔/单日提现上限，超额需冷签或人工批；</li>
+<li><b>key 隔离</b>：签名 key 存 HSM/冷机，热服务只持“构造交易”能力，不持完整签名权。</li>
+</ul>
+<pre><code>// multisig-withdraw.js —— 热钱包多签提现骨架（2-of-3）
+const OWNER_KEYS = [pkA, pkB, pkC]; // 三把 key 分属不同保管方
+const PERMISSION_ID = 2;            // active 权限 id
+
+async function proposeWithdraw(to, amtSun) {
+  // 1. 用一把 key 构造并签名（permissionId=2 表示用 active 权限）
+  const tx = await tronWeb.transactionBuilder.sendTrx(to, amtSun, HOT_WALLET);
+  const s1 = await tronWeb.trx.sign(tx, OWNER_KEYS[0], PERMISSION_ID);
+  // 2. 把已签交易交给第二把 key 追加签名
+  const s2 = await tronWeb.trx.sign(s1, OWNER_KEYS[1], PERMISSION_ID);
+  // 3. 签名数达到阈值（2），广播
+  const ret = await tronWeb.trx.broadcast(s2);
+  return ret;
+}
+</code></pre>
+<div class="tip"><b>分工建议：</b>构造与广播由“热服务”完成，两把签名 key 分别由“值班运维”与“风控”持有，大额再加“冷签”。任何单点泄露都不会直接损失资金。</div>
+
+<h2 id="s19">19. 监控、告警与审计</h2>
+<p>支付系统是资金命脉，必须可观测、可回溯：</p>
+<table>
+<tr><th>维度</th><th>监控项</th><th>告警阈值示例</th></tr>
+<tr><td>链上</td><td>热钱包余额、归集成功率、未确认订单堆积</td><td>热钱包 TRX &lt; 100 或 USDT &lt; 下限</td></tr>
+<tr><td>服务</td><td>监听器存活、API 错误率、Webhook 投递失败</td><td>5 分钟无新事件 / 错误率 &gt; 1%</td></tr>
+<tr><td>安全</td><td>异常大额、新地址提现、白名单外合约事件</td><td>单笔 &gt; 阈值或新地址提现即时告警</td></tr>
+<tr><td>对账</td><td>链上余额 vs 本地账本差异</td><td>任意差异 &gt; 0 立即告警</td></tr>
+</table>
+<pre><code>// monitor.js —— 最小监控示例（伪代码）
+async function monitorHotWallet() {
+  const tw = new TronWeb({ fullHost: "https://api.trongrid.io" });
+  const acct = await tw.trx.getAccount(HOT_WALLET);
+  const trx = acct.balance / 1e6;
+  const usdtRaw = await (await tw.contract().at(USDT)).balanceOf(HOT_WALLET).call();
+  const usdt = Number(usdtRaw) / 1e6;
+  if (trx &lt; 100) alert("⚠️ 热钱包 TRX 偏低: " + trx);
+  if (usdt &lt; 1000) alert("⚠️ 热钱包 USDT 偏低: " + usdt);
+}
+setInterval(monitorHotWallet, 60 * 1000);
+</code></pre>
+<div class="note"><b>审计日志：</b>所有“地址分配、监听入账、归集、提现、告警”都必须落<strong>不可篡改的审计日志</strong>（含 txID、操作人、时间、前后余额）。出事时这是定位与追责的唯一依据。至此，一套生产级 USDT-TRC20 收款系统所需的架构、代码、风控、监控已全部覆盖。</div>
+
+<h2 id="s20">20. 安全攻击面与防护总览</h2>
+<p>把前面分散的安全点汇总，支付系统的攻击面主要在这些地方，逐一对应防护：</p>
+<table>
+<tr><th>攻击面</th><th>手法</th><th>防护</th></tr>
+<tr><td>假 USDT 同名代币</td><td>伪造 name/symbol=USDT 的合约向地址空投并触发事件</td><td>监听只信合约白名单（contract_address）</td></tr>
+<tr><td>未激活地址转账失败</td><td>向全新地址直接打 USDT 导致交易失败</td><td>分配地址时预激活（先转 1 TRX）</td></tr>
+<tr><td>归集 race（抢跑）</td><td>充值私钥泄露后，攻击者在归集前转走刚到账资金</td><td>私钥加密存储 + 极速归集 + 充值地址不留余额</td></tr>
+<tr><td>伪造 Webhook 回调</td><td>直接打业务接口谎称已支付</td><td>HMAC 签名校验 + 幂等 + 链上复核 txID</td></tr>
+<tr><td>热钱包单点失陷</td><td>一把私钥泄露即损失全部热资金</td><td>协议多签 2-of-3 + 业务限额 + key 隔离</td></tr>
+<tr><td>滑点/夹子（兑换时）</td><td>低流动性下被吃价</td><td>先 quote 再设 amountOutMin 留滑点缓冲</td></tr>
+<tr><td>回滚误入账</td><td>仅 1 确认即放行，遇短分叉回滚</td><td>最终以固化（~19 秒）为入账依据</td></tr>
+</table>
+<div class="warn"><b>安全总纲：</b>支付系统没有“银弹”，靠的是<strong>纵深防御</strong>——白名单过滤、多签、冷热分离、签名校验、对账兜底、审计可追溯，六层叠加。任何一层被突破，其他层仍能挡住损失。上线前务必做一次完整的安全评审与故障演练（如模拟监听器宕机、模拟假代币攻击）。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用第 7 节代码生成 5 个充值地址，并把它们登记进一个内存 Map（模拟数据库）供监听器使用。</li>
+<li>在 Nile 上向其中一个充值地址打测试 USDT（注意先激活地址），验证第 8 节监听器能识别并回调。</li>
+<li>构造一个“假 USDT”合约（name/symbol 都叫 USDT 但地址不同），向你的地址转账，确认监听器<strong>忽略</strong>它（白名单生效）。</li>
+<li>实现第 10 节的归集两步流程，把测试地址的 USDT 归集到热钱包，并验证手续费由 TRX 覆盖。</li>
+<li>用第 15 节的测算脚本，按你业务预估的日均笔数，选出自质押/租赁/燃烧中最优方案并说明原因。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能画出 TRON DeFi 生态地图，说清 USDT/JustLend/SUN.io/USDD/SunPump/BTTC 角色；</li>
+<li>能解释 USDT-TRC20 为何是支付首选，并背出主网合约地址；</li>
+<li>能设计“一单一址 + HD 派生 + 热/冷分离”的收款架构；</li>
+<li>能写出充值地址批量生成代码（coin type 195）；</li>
+<li>能写出带<strong>合约白名单</strong>的入账监听，并讲清“伪造同名代币攻击”如何防范；</li>
+<li>能区分 1 确认与固化，并设计“先通知后放行”的业务流；</li>
+<li>能实现归集的两步流程（先转 TRX 激活/手续费，再转 USDT）并说明 Energy 优化；</li>
+<li>能设计对账与提现风控清单（频率/白名单/二次确认/冷热分离）；</li>
+<li>能写出 JustLend 存款与 SUN.io 兑换的骨架代码，并解释滑点保护；</li>
+<li>能对比自质押/租赁/燃烧三种 Energy 方案的成本并给出选型建议。</li>
+</ul></div>
+
+<div class="pager"><a href="11-tron-tvm.html"><b>上一篇</b>← TRON 篇 II：TVM 合约开发与部署</a><a class="next" href="13-sui.html"><b>下一篇</b>Sui 篇：Move 与对象模型 →</a></div>
+</main></body></html>

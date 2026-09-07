@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRON 篇 II：TVM 合约开发与部署</title><link rel="stylesheet" href="assets/style.css"></head>
+<body>
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-fab" title="打开全站目录">&#9776; 全部目录</label>
+<label for="nav-toggle" class="nav-mask"></label>
+<div class="nav-drawer">
+<div class="nav-drawer-head"><b>系列教程目录</b><label for="nav-toggle" class="nav-close">&times;</label></div>
+<nav>
+<div class="nav-group">总站</div>
+<a href="index.html">课程目录（门户）</a>
+<a href="overview.html">系列总览（速查版）</a>
+<div class="nav-group">公共基础</div>
+<a href="00-common.html">篇 00 · 密码学 / HD 钱包 / 签名</a>
+<div class="nav-group">Bitcoin</div>
+<a href="01-btc.html">篇 01 · BTC 概念与钱包</a>
+<a href="02-btc-script.html">篇 02 · 脚本与交易编程</a>
+<a href="03-btc-ecosystem.html">篇 03 · 生态与 BTCfi</a>
+<div class="nav-group">Ethereum</div>
+<a href="04-eth.html">篇 04 · ETH 概念与钱包</a>
+<a href="05-solidity.html">篇 05 · Solidity 合约语法</a>
+<a href="06-eth-defi.html">篇 06 · DeFi 原理与实战</a>
+<div class="nav-group">Solana</div>
+<a href="07-sol.html">篇 07 · SOL 概念与钱包</a>
+<a href="08-sol-anchor.html">篇 08 · Rust 与 Anchor 合约</a>
+<a href="09-sol-defi.html">篇 09 · SOL DeFi 实战</a>
+<div class="nav-group">TRON</div>
+<a href="10-tron.html">篇 10 · TRON 概念与钱包</a>
+<a href="11-tron-tvm.html" class="cur">篇 11 · TVM 合约开发</a>
+<a href="12-tron-defi.html">篇 12 · DeFi 与 USDT 支付</a>
+<div class="nav-group">Sui</div>
+<a href="13-sui.html">篇 13 · SUI 概念与钱包</a>
+<a href="14-sui-move.html">篇 14 · Move 合约开发</a>
+<a href="15-sui-defi.html">篇 15 · SUI DeFi 实战</a>
+</nav></div>
+<header class="topbar"><a href="index.html">课程目录</a><span class="crumb">/</span><span class="crumb">TRON 篇 II：TVM 合约开发与部署</span><span class="chain chain-tron">TRON</span></header>
+<main class="doc">
+<h1>TRON 篇 II：TVM 合约开发与部署</h1><p class="subtitle">用 TronBox 编译部署 Solidity 合约，从 HelloTron 到完整 TRC-20 与图书馆 DApp，搞懂 TRON 上合约与钱包交互的全部细节。主要参考：官方 Build a Web3 App、TronBox/TronWeb 文档、tron-workshop 示例仓库。</p>
+<div class="goals"><b>本章目标：</b>
+<ol>
+<li>搭建 TronBox 工具链，配置 tronbox-config.js 与测试网；</li>
+<li>列出并理解 Solidity on TRON 与以太坊的关键差异；</li>
+<li>完成 HelloTron 存储合约的 编写→编译→migrate→TronWeb 交互；</li>
+<li>给出一个完整、可部署的 TRC-20 代币合约代码；</li>
+<li>基于官方教程重构一个去中心化图书馆 DApp（合约 + 前端），并讲清 .call()/.send()、feeLimit、Energy 错误处理与迁移 Checklist。</li>
+</ol></div>
+<div class="toc"><b>本章目录</b><br>
+<a href="#s1">1. 工具链：TronBox 总览</a>
+<a href="#s2">2. 测试网 Nile 与 Shasta</a>
+<a href="#s3">3. 私钥管理与 .env 规范</a>
+<a href="#s4">4. Tronscan 合约验证</a>
+<a href="#s5">5. Solidity on TRON 差异对照表</a>
+<a href="#s6">6. 实战一：HelloTron 存储合约</a>
+<a href="#s7">7. 实战二：完整 TRC-20 代币合约</a>
+<a href="#s8">8. 实战三：去中心化图书馆 DApp</a>
+<a href="#s9">9. 合约交互进阶</a>
+<a href="#s10">10. 部署成本实测与 Energy 优化</a>
+<a href="#s11">11. ERC-20/DApp 迁移 TRON Checklist</a>
+<a href="#s12">12. 实战四：脚本化部署（脱离 TronBox）</a>
+<a href="#s13">13. 编写 TronBox 测试</a>
+<a href="#s14">14. 调试与常见合约错误</a>
+</div>
+
+<h2 id="s1">1. 工具链：TronBox 总览</h2>
+<p><strong>TronBox</strong> 是 TRON 版的 Truffle：同一套命令心智模型，编译 Solidity、部署合约、跑测试、开控制台。它是 TRON 合约开发的事实标准。</p>
+<pre><code># 全局安装
+npm i -g tronbox
+
+# 初始化一个空工程（生成 contracts/ migrations/ test/ tronbox-config.js）
+tronbox init
+
+# 编译
+tronbox compile
+
+# 部署到配置的网络
+tronbox migrate --network nile
+
+# 跑测试
+tronbox test
+
+# 交互式控制台（连上节点后可直接 new 合约、调用）
+tronbox console --network nile
+</code></pre>
+<p><code>tronbox-config.js</code> 是核心配置，包含网络、编译器版本、优化器：</p>
+<pre><code>// tronbox-config.js
+module.exports = {
+  networks: {
+    // 本地私链（tronbox 自带或 docker 私网）
+    development: {
+      privateKey: "你的私钥HEX",
+      consume_user_resource_percent: 30, // 合约部署者承担的资源比例
+      feeLimit: 100000000,               // 部署交易 feeLimit（SUN）
+      fullHost: "http://127.0.0.1:9090",
+      network_id: "*",
+    },
+    nile: {
+      privateKey: process.env.NILE_PRIVATE_KEY,
+      consume_user_resource_percent: 30,
+      feeLimit: 100000000,
+      fullHost: "https://nile.trongrid.io",
+      network_id: "*",
+    },
+    mainnet: {
+      privateKey: process.env.MAIN_PRIVATE_KEY,
+      consume_user_resource_percent: 30,
+      feeLimit: 200000000,
+      fullHost: "https://api.trongrid.io",
+      network_id: "*",
+    },
+  },
+  compilers: {
+    solc: {
+      version: "0.8.16",                 // TVM 支持的稳定版本（避免过新）
+      settings: {
+        optimizer: { enabled: true, runs: 200 },
+      },
+    },
+  },
+  // 合约源码目录
+  contracts_directory: "./contracts",
+  contracts_build_directory: "./build",
+};
+</code></pre>
+<div class="warn"><b>版本注意：</b>TVM 的 solc 支持版本<strong>滞后于以太坊官方</strong>。不要直接贴 0.8.24+ 的最新特性（如某些新 opcode、transient storage），先查 TRON 文档确认。本篇示例统一用 0.8.16（稳妥区间）。</div>
+
+<h2 id="s2">2. 测试网 Nile 与 Shasta</h2>
+<p>TRON 有两个常用公共测试网，用途不同：</p>
+<table>
+<tr><th>测试网</th><th>RPC / fullHost</th><th>特点</th><th>适用</th></tr>
+<tr><td><b>Nile</b></td><td>https://nile.trongrid.io</td><td>官方主推测试网，资源/生态最完整，配套 faucet 发 TRX 与测试 USDT</td><td>合约开发、DApp 集成首选</td></tr>
+<tr><td><b>Shasta</b></td><td>https://api.shasta.trongrid.io</td><td>老牌测试网，网络较稳定但生态文档少</td><td>快速验证、与老教程对齐</td></tr>
+</table>
+<ul>
+<li>水龙头：<a href="https://nileex.io/join/getJoinPage" target="_blank">nileex.io</a> 领取 Nile 测试 TRX/USDT；Shasta 在 shasta.tronscan.org 相关页面领水。</li>
+<li>浏览器：<code>nile.tronscan.org</code>（Nile）、<code>shasta.tronscan.org</code>（Shasta）。</li>
+</ul>
+<div class="tip"><b>选择建议：</b>本篇所有示例默认 Nile。两个网络的地址体系、代码完全一致，只是网络参数与代币不同，切换只需改 <code>fullHost</code> 与私钥。</div>
+
+<h2 id="s3">3. 私钥管理与 .env 规范</h2>
+<p>切勿把私钥写进代码或提交到 git。标准做法是用 <code>.env</code> + <code>dotenv</code>：</p>
+<pre><code>// .env（务必加入 .gitignore）
+NILE_PRIVATE_KEY=你的Nile私钥HEX（纯 hex，无 0x）
+MAIN_PRIVATE_KEY=你的主网私钥HEX
+TRONGRID_API_KEY=你的TronGrid_API_Key（事件 API 需要）
+
+// tronbox-config.js 顶部
+require("dotenv").config();
+// 之后用 process.env.NILE_PRIVATE_KEY
+</code></pre>
+<pre><code># .gitignore 至少包含
+.env
+node_modules/
+build/
+</code></pre>
+<div class="warn"><b>安全底线：</b>测试网私钥也别和主网混用同一套；主网私钥只在本地部署机临时存在，绝不进代码仓库、不进前端 bundle、不进日志。</div>
+
+<h2 id="s4">4. Tronscan 合约验证</h2>
+<p>部署后让外部可读源码，需在 Tronscan 做“合约验证（Verify）”。流程：</p>
+<ol>
+<li>在 Tronscan 搜索你的合约地址 → 进入合约页 → “Contract” → “Verify”；</li>
+<li>选择编译器版本（须与部署时一致）、开启/关闭优化器（须与部署时一致）；</li>
+<li>粘贴<strong>完整源码</strong>（含 import 的文件需内联或按目录上传）；</li>
+<li>提交后 Tronscan 重新编译并与链上 bytecode 比对，一致即验证通过，用户可在线 Read/Write。</li>
+</ol>
+<div class="note"><b>提示：</b>验证失败最常见原因是“优化器 runs 数不一致”或“源码未包含全部 import”。TronBox 编译产物在 <code>build/contracts/*.json</code> 里有 <code>source</code> 与 <code>bytecode</code>，可对照排查。</div>
+
+<h2 id="s5">5. Solidity on TRON 差异对照表</h2>
+<table>
+<tr><th>维度</th><th>以太坊</th><th>TRON / TVM</th></tr>
+<tr><td>编译器版本</td><td>紧跟 solc 最新</td><td>版本滞后，需用受支持版本（如 0.8.x 特定区间）</td></tr>
+<tr><td>计费方式</td><td>Gas（ETH 支付）</td><td>Energy（质押或燃烧 TRX），写操作须带 feeLimit</td></tr>
+<tr><td>block.timestamp 语义</td><td>出块时间戳</td><td>同为秒级时间戳，但受 27 个 SR 影响，<em>不要用于强安全随机数</em></td></tr>
+<tr><td>地址字面量</td><td>0x 前缀 20 字节</td><td>合约内地址仍是 20 字节，但外部表示带 0x41 前缀的 21 字节；<code>address(0x41...)</code> 字面量需小心</td></tr>
+<tr><td>TRC-20 / ERC-20 接口</td><td>ERC-20 标准</td><td>接口完全一致（name/symbol/decimals/balanceOf/transfer/approve/transferFrom/Transfer/Approval），可移植</td></tr>
+<tr><td>合约创建</td><td>CREATE / CREATE2</td><td>支持 CREATE；CREATE2 在较新 TVM 版本支持，需注意版本</td></tr>
+<tr><td>预编译合约</td><td>一系列 precompile</td><td>部分预编译不同，跨链移植前查 TRON 预编译列表</td></tr>
+</table>
+<div class="tip"><b>移植结论：</b>多数标准 ERC-20/ERC-721 合约“改个编译器版本 + 加 feeLimit”即可上 TRON；但<strong>时间敏感的随机逻辑、价格预言机、地址字面量拼接</strong>要重点回归测试。</div>
+
+<h2 id="s6">6. 实战一：HelloTron 存储合约</h2>
+<p>最小可运行合约：存一个字符串，可读可写。对应官方 Getting Started。</p>
+<p><b>① 编写合约</b> <code>contracts/HelloTron.sol</code>：</p>
+<pre><code>// contracts/HelloTron.sol
+pragma solidity ^0.8.16;
+
+contract HelloTron {
+    string public greeting;
+
+    event GreetingChanged(string oldGreeting, string newGreeting);
+
+    constructor(string memory _greeting) {
+        greeting = _greeting;
+    }
+
+    function setGreeting(string memory _greeting) public {
+        string memory old = greeting;
+        greeting = _greeting;
+        emit GreetingChanged(old, _greeting);
+    }
+
+    function getGreeting() public view returns (string memory) {
+        return greeting;
+    }
+}
+</code></pre>
+<p><b>② 迁移脚本</b> <code>migrations/2_deploy_hello.js</code>：</p>
+<pre><code>// migrations/2_deploy_hello.js
+const HelloTron = artifacts.require("HelloTron");
+
+module.exports = function (deployer) {
+  deployer.deploy(HelloTron, "Hello TRON!");
+};
+</code></pre>
+<p><b>③ 编译并部署到 Nile：</b></p>
+<pre><code>tronbox compile
+tronbox migrate --network nile
+# 部署成功会打印合约地址（base58）
+</code></pre>
+<p><b>④ 用 TronWeb 交互</b>（前端或脚本里）：</p>
+<pre><code>// interact-hello.js —— .call() 只读，.send() 写链
+const TronWeb = require("tronweb");
+const tronWeb = new TronWeb({
+  fullHost: "https://nile.trongrid.io",
+  privateKey: process.env.NILE_PRIVATE_KEY,
+});
+
+async function hello() {
+  const instance = await tronWeb.contract().at("T你的HelloTron地址");
+
+  // 只读：免 Energy，用 .call()
+  const g1 = await instance.greeting().call();
+  console.log("当前问候:", g1);
+
+  // 写链：用 .send()，带 feeLimit
+  const tx = await instance.setGreeting("你好 TRON").send({
+    feeLimit: tronWeb.toSun(30),
+  });
+  console.log("setGreeting txID:", tx);
+
+  // 写后再次读取
+  const g2 = await instance.greeting().call();
+  console.log("更新后问候:", g2);
+}
+hello().catch(console.error);
+</code></pre>
+
+<h2 id="s7">7. 实战二：完整 TRC-20 代币合约</h2>
+<p>下面是可直接在 TronBox 编译部署的 TRC-20 实现（精简自 OpenZeppelin 思路，保留标准接口）。注意点：</p>
+<ul>
+<li>接口与 ERC-20 一致，便于钱包与交易所识别；</li>
+<li>USDT 是 6 位小数，但本示例用 18 位以贴合多数 ERC-20 习惯；上线前按需改 <code>decimals</code>；</li>
+<li>避免 <code>SafeMath</code> 冗余（solc 0.8+ 自带溢出检查）。</li>
+</ul>
+<pre><code>// contracts/MyToken.sol
+pragma solidity ^0.8.16;
+
+interface ITRC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address who) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function transfer(address to, uint256 value) external returns (bool);
+    function approve(address spender, uint256 value) external returns (bool);
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+contract MyToken is ITRC20 {
+    string public name = "My TRON Token";
+    string public symbol = "MTT";
+    uint8 public decimals = 18;
+    uint256 public override totalSupply;
+
+    mapping(address =&gt; uint256) public override balanceOf;
+    mapping(address =&gt; mapping(address =&gt; uint256)) public override allowance;
+
+    address public owner;
+
+    constructor(uint256 initialSupply) {
+        owner = msg.sender;
+        totalSupply = initialSupply;
+        balanceOf[msg.sender] = initialSupply;
+        emit Transfer(address(0), msg.sender, initialSupply);
+    }
+
+    function transfer(address to, uint256 value) public override returns (bool) {
+        require(balanceOf[msg.sender] &gt;= value, "余额不足");
+        require(to != address(0), "零地址");
+        balanceOf[msg.sender] -= value;
+        balanceOf[to] += value;
+        emit Transfer(msg.sender, to, value);
+        return true;
+    }
+
+    function approve(address spender, uint256 value) public override returns (bool) {
+        allowance[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 value) public override returns (bool) {
+        require(balanceOf[from] &gt;= value, "余额不足");
+        require(allowance[from][msg.sender] &gt;= value, "授权不足");
+        require(to != address(0), "零地址");
+        balanceOf[from] -= value;
+        balanceOf[to] += value;
+        allowance[from][msg.sender] -= value;
+        emit Transfer(from, to, value);
+        return true;
+    }
+}
+</code></pre>
+<div class="note"><b>OpenZeppelin 移植注意点：</b>直接 <code>import "@openzeppelin/contracts/token/ERC20/ERC20.sol"</code> 在 TRON 上<em>多数能编译</em>，但要确认 OpenZeppelin 版本不依赖 TRON 不支持的特性（如特定预编译、<code>block.chainid</code> 等）。建议先用一个最小实现跑通，再逐步引入库。</div>
+
+<h2 id="s8">8. 实战三：去中心化图书馆 DApp</h2>
+<p>官方 “Build a Web3 App” 教程浓缩重构：一个去中心化图书馆，任何人可上架书（缴租金），读者可租借（付 TRX），合约管理书的状态。我们给出<strong>完整合约 + 无框架前端</strong>。</p>
+<h3>8.1 Solidity 合约</h3>
+<pre><code>// contracts/Library.sol
+pragma solidity ^0.8.16;
+
+contract Library {
+    struct Book {
+        uint256 id;
+        string title;
+        address owner;
+        uint256 price;        // 租一天的价格（SUN）
+        bool available;
+    }
+
+    uint256 public bookCount;
+    mapping(uint256 =&gt; Book) public books;
+    mapping(address =&gt; uint256[]) public borrowedBooks;
+
+    event BookAdded(uint256 id, string title, address owner, uint256 price);
+    event BookRented(uint256 id, address renter, uint256 days_);
+
+    // 上架一本书，price 单位为 SUN/天
+    function addBook(string memory _title, uint256 _price) public {
+        require(bytes(_title).length &gt; 0, "书名不能为空");
+        bookCount++;
+        books[bookCount] = Book(bookCount, _title, msg.sender, _price, true);
+        emit BookAdded(bookCount, _title, msg.sender, _price);
+    }
+
+    // 租书：days_ 租期天数，调用时附带 TRX（callValue）
+    function rentBook(uint256 _id, uint256 days_) public payable {
+        Book storage b = books[_id];
+        require(b.id != 0, "书不存在");
+        require(b.available, "已借出");
+        uint256 cost = b.price * days_;
+        require(msg.value &gt;= cost, "TRX 不足");
+        b.available = false;
+        borrowedBooks[msg.sender].push(_id);
+        // 租金转给书主
+        payable(b.owner).transfer(cost);
+        emit BookRented(_id, msg.sender, days_);
+    }
+
+    function getBook(uint256 _id) public view returns (
+        uint256, string memory, address, uint256, bool
+    ) {
+        Book memory b = books[_id];
+        return (b.id, b.title, b.owner, b.price, b.available);
+    }
+}
+</code></pre>
+<h3>8.2 前端 index.html（无框架）</h3>
+<pre><code>&lt;!-- index.html —— 去中心化图书馆 DApp 前端 --&gt;
+&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;去中心化图书馆&lt;/title&gt;
+  &lt;style&gt;body{font-family:sans-serif;max-width:720px;margin:0 auto;padding:24px;}input,button{margin:6px 0;padding:8px;width:100%;}li{margin:8px 0;}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;去中心化图书馆（TRON）&lt;/h1&gt;
+  &lt;button id="connect"&gt;连接 TronLink&lt;/button&gt;
+  &lt;p id="status"&gt;未连接&lt;/p&gt;
+
+  &lt;h3&gt;上架新书&lt;/h3&gt;
+  书名：&lt;input id="title" placeholder="例如：三体"&gt;
+  日租价(TRX)：&lt;input id="price" type="number"&gt;
+  &lt;button id="add"&gt;上架&lt;/button&gt;
+
+  &lt;h3&gt;书单&lt;/h3&gt;
+  &lt;ul id="list"&gt;&lt;/ul&gt;
+
+  &lt;h3&gt;租书&lt;/h3&gt;
+  书ID：&lt;input id="bid" type="number"&gt;
+  租期(天)：&lt;input id="days" type="number"&gt;
+  &lt;button id="rent"&gt;租借（付 TRX）&lt;/button&gt;
+
+  &lt;script src="app.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<h3>8.3 前端 app.js（TronLink + TronWeb）</h3>
+<pre><code>// app.js —— 图书馆 DApp 逻辑（浏览器内，依赖 TronLink 注入的 tronWeb）
+const CONTRACT = "T你的Library合约地址";
+
+async function connect() {
+  if (!window.tronLink &amp;&amp; !window.tron) {
+    alert("请安装 TronLink"); return;
+  }
+  const tl = window.tronLink || window.tron;
+  await tl.request({ method: "tron_requestAccounts" });
+  const tw = tl.tronWeb;
+  document.getElementById("status").innerText = "已连接: " + tw.defaultAddress.base58;
+  return tw;
+}
+
+async function loadBooks(tw) {
+  const inst = await tw.contract().at(CONTRACT);
+  const count = Number(await inst.bookCount().call());
+  const ul = document.getElementById("list");
+  ul.innerHTML = "";
+  for (let i = 1; i &lt;= count; i++) {
+    const [id, title, owner, price, avail] = await inst.getBook(i).call();
+    const li = document.createElement("li");
+    li.innerText = `#${id} ${title} | 日租 ${tw.fromSun(price)} TRX | ${avail ? "可租" : "已借出"} | 主:${owner}`;
+    ul.appendChild(li);
+  }
+}
+
+document.getElementById("connect").onclick = async () =&gt; {
+  const tw = await connect();
+  if (tw) loadBooks(tw);
+};
+
+document.getElementById("add").onclick = async () =&gt; {
+  const tw = await connect();
+  const inst = await tw.contract().at(CONTRACT);
+  const title = document.getElementById("title").value;
+  const priceSun = tw.toSun(Number(document.getElementById("price").value));
+  const tx = await inst.addBook(title, priceSun).send({ feeLimit: tw.toSun(50) });
+  alert("上架成功 txID: " + tx);
+  loadBooks(tw);
+};
+
+document.getElementById("rent").onclick = async () =&gt; {
+  const tw = await connect();
+  const inst = await tw.contract().at(CONTRACT);
+  const bid = Number(document.getElementById("bid").value);
+  const days = Number(document.getElementById("days").value);
+  // 先查价再算 callValue（附带 TRX）
+  const [, , , price, ] = await inst.getBook(bid).call();
+  const callValue = Number(price) * days;
+  const tx = await inst.rentBook(bid, days).send({
+    feeLimit: tw.toSun(50),
+    callValue: callValue,   // 随交易附带的 TRX（SUN）
+  });
+  alert("租书成功 txID: " + tx);
+  // 交易确认后刷新
+  setTimeout(() =&gt; loadBooks(tw), 8000);
+};
+</code></pre>
+<div class="tip"><b>两个关键写法：</b>① <code>feeLimit</code> 是给 Energy 燃烧的上限；② <code>callValue</code> 是<strong>随这笔交易附带支付的原生 TRX</strong>（单位 SUN），对应合约里的 <code>msg.value</code>，用于“租书付钱”。这两者在以太坊里靠 API 参数区分，在 TronWeb 里就是 send 的两个字段。</div>
+
+<h2 id="s9">9. 合约交互进阶</h2>
+<h3>9.1 .call() vs .send()</h3>
+<table>
+<tr><th>方法</th><th>是否上链</th><th>消耗</th><th>用途</th></tr>
+<tr><td><code>.call()</code></td><td>否（只读，本地执行）</td><td>免 Energy</td><td>view/pure 查询（balanceOf、getBook 等）</td></tr>
+<tr><td><code>.send()</code></td><td>是（广播交易）</td><td>消耗/燃烧 Energy，需 feeLimit</td><td>状态变更（transfer、addBook 等）</td></tr>
+</table>
+<pre><code>// 只读——永远用 .call()，且不要在 .send() 里意外调用只读方法导致烧钱
+const bal = await token.balanceOf(addr).call();
+
+// 写——必须 .send() 且带 feeLimit
+const tx = await token.transfer(to, amt).send({ feeLimit: tronWeb.toSun(20) });
+</code></pre>
+
+<h3>9.2 feeLimit 估算（estimateEnergy）</h3>
+<p>上线前先估算 Energy，避免 feeLimit 设得离谱。TronWeb 可用节点 API 估算：</p>
+<pre><code>// 估算某次合约调用的 Energy 消耗
+async function estimateEnergy(contractAddr, functionSelector, params, ownerAddr) {
+  const res = await tronWeb.fullNode.request(
+    "/wallet/estimateenergy",
+    {
+      owner_address: tronWeb.address.toHex(ownerAddr),
+      contract_address: tronWeb.address.toHex(contractAddr),
+      function_selector: functionSelector,   // 如 "transfer(address,uint256)"
+      parameter: params,                     // 已 ABI 编码的参数 hex
+    },
+    "post"
+  );
+  // res.energy_required / energy_used 即所需 Energy
+  return res;
+}
+</code></pre>
+
+<h3>9.3 Energy 不足时的错误处理与重试</h3>
+<pre><code>async function safeSend(txPromise, feeLimitSun) {
+  try {
+    const tx = await txPromise.send({ feeLimit: feeLimitSun });
+    const info = await waitConfirm(tx);
+    if (info.receipt &amp;&amp; info.receipt.result !== "SUCCESS") {
+      throw new Error("合约执行失败: " + JSON.stringify(info.contractResult));
+    }
+    return tx;
+  } catch (e) {
+    // 常见：OUT_OF_ENERGY —— 说明 feeLimit 不足以燃烧，需提高或先质押/租 Energy
+    if (/OUT_OF_ENERGY|feeLimit/.test(e.message)) {
+      console.error("Energy 不足，请提高 feeLimit 或质押 Energy 后重试");
+    }
+    throw e;
+  }
+}
+</code></pre>
+
+<h3>9.4 批量读与事件查询</h3>
+<pre><code>// 批量读：并发调用 .call() 提升效率
+async function batchBalances(tokenAddr, addrs) {
+  const inst = await tronWeb.contract().at(tokenAddr);
+  return Promise.all(addrs.map(a =&gt; inst.balanceOf(a).call()));
+}
+
+// 事件查询：getEventResult（同第 I 篇，可用于前端历史加载）
+const logs = await tronWeb.getEventResult(contractAddr, {
+  eventName: "BookAdded", size: 20, orderBy: "block_timestamp,desc",
+});
+console.log(logs);
+</code></pre>
+
+<h3>9.5 合约升级模式（代理）</h3>
+<p>TRON 上做可升级合约（代理模式）与以太坊思路一致：<strong>逻辑合约 + 代理合约 + 存储分离</strong>，通过 delegatecall 转发。但注意：</p>
+<ul>
+<li>TRON 的 <code>delegatecall</code> 在 TVM 中可用，但协议层对代理的 storage 布局校验要回归测试；</li>
+<li>部分 OpenZeppelin 升级库依赖的特性要确认 TVM 支持；</li>
+<li>更简单的“半中心化”方案：用 <strong>owner 可替换逻辑合约地址</strong>的注册表模式（适合内部系统）。</li>
+</ul>
+<pre><code>// 极简可替换逻辑（注册表式伪代码）
+contract Registry {
+    address public logic;
+    address public admin;
+    function upgrade(address newLogic) public {
+        require(msg.sender == admin, "only admin");
+        logic = newLogic;
+    }
+    fallback() external payable {
+        address l = logic;
+        assembly { calldatacopy(0,0,calldatasize()) }
+        // delegatecall 到 logic，存储留在代理
+    }
+}
+</code></pre>
+<div class="warn"><b>TRON 代理注意点：</b>delegatecall 后 storage 留在代理，但 TVM 对存储槽行为需实测；上线前务必在 Nile 完整回归 upgrade + 调用，确认状态不丢。</div>
+
+<h2 id="s10">10. 部署成本实测与 Energy 优化</h2>
+<p>部署合约本身消耗 Energy。下表是典型量级（以 Nile/主网常见参数，实际以链上为准）：</p>
+<table>
+<tr><th>操作</th><th>自有 Energy 充足</th><th>无 Energy 燃烧 TRX</th></tr>
+<tr><td>部署简单合约（~几 KB）</td><td>近乎免费</td><td>约 40~80 TRX</td></tr>
+<tr><td>部署复杂合约（含库）</td><td>近乎免费</td><td>约 100~300 TRX</td></tr>
+<tr><td>普通 TRC-20 交互</td><td>免费</td><td>约 3.6~3.9 TRX/笔</td></tr>
+</table>
+<h3>10.1 Energy 租赁降本</h3>
+<p>当短时高并发（如发币空投、批量转账）时，可临时<strong>租赁 Energy</strong>（第三方市场/JustLend Energy Rental），比永久燃烧便宜得多：</p>
+<ul>
+<li><b>自质押</b>：锁 TRX 换 Energy，适合长期高频；</li>
+<li><b>租赁</b>：按小时/天租 Energy，适合短时爆发，单价显著低于燃烧；</li>
+<li><b>燃烧</b>：最简单但最贵，仅适合偶发。</li>
+</ul>
+<pre><code>// 成本对比思想（伪代码量级）
+// 场景：1 万笔 USDT 转账，每笔约需 13800 Energy
+const perTxBurn = 13800 * 0.00028;          // 燃烧：约 3.86 TRX/笔
+const totalBurn = perTxBurn * 10000;        // ≈ 38600 TRX（燃烧方案）
+
+// 租赁：约 0.0001~0.0003 TRX/Energy（市场价波动）
+const perTxRent = 13800 * 0.0002;           // ≈ 2.76 TRX/笔，但可批量议价更低
+const totalRent = perTxRent * 10000;        // ≈ 27600 TRX（租赁方案，通常更低）
+
+// 自质押：10000 TRX 质押换 Energy，支撑数万笔近乎免费
+console.log("燃烧:", totalBurn, "租赁:", totalRent);
+</code></pre>
+<div class="tip"><b>结论：</b>长期运营用<strong>质押</strong>最省；短时峰值用<strong>租赁</strong>填补；只做一两笔用<strong>燃烧</strong>图省事。商户收款系统（第 12 篇）会据此设计 Energy 策略。</div>
+
+<h2 id="s11">11. ERC-20 / DApp 迁移 TRON Checklist</h2>
+<p>把你现有以太坊项目迁到 TRON，逐项核对：</p>
+<table>
+<tr><th>项</th><th>以太坊</th><th>TRON 改动</th></tr>
+<tr><td>工具链</td><td>Hardhat / Truffle</td><td>改用 TronBox（命令同 Truffle），或 TronWeb + 脚本</td></tr>
+<tr><td>RPC / fullHost</td><td>Infura / Alchemy URL</td><td>https://nile.trongrid.io（测试）/ https://api.trongrid.io（主网）</td></tr>
+<tr><td>钱包连接</td><td>window.ethereum / MetaMask</td><td>window.tronLink / window.tron（TronLink）</td></tr>
+<tr><td>费用参数</td><td>gasLimit / gasPrice / EIP-1559</td><td>feeLimit（SUN）+ 可选 callValue（附带 TRX）</td></tr>
+<tr><td>编译器</td><td>最新 solc</td><td>受 TVM 支持的版本（如 0.8.16），关掉不支持特性</td></tr>
+<tr><td>地址处理</td><td>0x 20 字节 hex</td><td>0x41 21 字节 hex ↔ T Base58Check，注意 toHex/fromHex</td></tr>
+<tr><td>测试网</td><td>Goerli / Sepolia</td><td>Nile / Shasta + 对应 faucet</td></tr>
+<tr><td>事件订阅</td><td>ethers provider.on</td><td>tronWeb.getEventResult 轮询 / TronGrid WebSocket</td></tr>
+</table>
+<div class="note"><b>迁移一句话：</b>代码（Solidity）几乎不动，动的是<strong>工具链、RPC、钱包注入对象、费用参数与地址编码</strong>这四类外围。前端把 ethers 换成 tronWeb、把 window.ethereum 换成 tronLink，即可完成大部分迁移。</div>
+
+<h2 id="s12">12. 实战四：脚本化部署（脱离 TronBox）</h2>
+<p>生产后端常需要在 Node 服务里动态部署合约（如为用户创建子合约）。此时可以不依赖 TronBox CLI，直接用 <strong>TronWeb + 编译产物</strong>部署。流程：先用 <code>tronbox compile</code> 得到 <code>build/contracts/MyToken.json</code>，其中 <code>bytecode</code> 与 <code>abi</code> 是关键。</p>
+<pre><code>// deploy-script.js —— 用 TronWeb 直接部署已编译合约
+const fs = require("fs");
+const TronWeb = require("tronweb");
+require("dotenv").config();
+
+const tronWeb = new TronWeb({
+  fullHost: "https://nile.trongrid.io",
+  privateKey: process.env.NILE_PRIVATE_KEY,
+});
+
+async function deploy() {
+  // 读取 tronbox 编译产物
+  const artifact = JSON.parse(fs.readFileSync("./build/contracts/MyToken.json", "utf8"));
+  const bytecode = artifact.bytecode;             // 含 constructor 占位
+  const abi = artifact.abi;
+
+  // 构造部署交易（构造函数参数要 ABI 编码后拼到 bytecode 后）
+  const deployTx = await tronWeb.transactionBuilder.createSmartContract({
+    abi: abi,
+    bytecode: bytecode,
+    feeLimit: tronWeb.toSun(100),
+    callValue: 0,
+    userFeePercentage: 30,
+    originEnergyLimit: 10000000,
+    parameters: [tronWeb.toSun(1000000)], // 构造函数 initialSupply 参数
+    name: "MyToken",
+  }, tronWeb.defaultAddress.hex);
+
+  const signed = await tronWeb.trx.sign(deployTx);
+  const ret = await tronWeb.trx.broadcast(signed);
+  if (!ret.result) throw new Error("部署广播失败: " + JSON.stringify(ret));
+  console.log("部署 txID:", ret.transaction ? ret.transaction.txID : ret.txid);
+
+  // 等待合约地址（部署成功后，合约地址可从回执或按规则推导）
+  await new Promise((r) =&gt; setTimeout(r, 8000));
+  const txInfo = await tronWeb.trx.getTransactionInfo(
+    ret.transaction ? ret.transaction.txID : ret.txid
+  );
+  const contractAddr = txInfo.contract_address;
+  console.log("合约地址(base58):", tronWeb.address.fromHex(contractAddr));
+}
+deploy().catch(console.error);
+</code></pre>
+<div class="warn"><b>构造函数参数编码：</b>当合约构造函数有参数时，必须先把参数按 ABI 编码后<strong>拼接到 bytecode 末尾</strong>，或用 TronWeb 的 <code>parameters</code> 字段让 SDK 代为编码（如上例）。手拼错误会导致部署出的合约构造函数参数错乱。</div>
+
+<h2 id="s13">13. 编写 TronBox 测试</h2>
+<p>TronBox 内置 Mocha + Chai，测试文件放在 <code>test/</code> 目录，用 <code>tronbox test</code> 运行。与 Truffle 几乎一致：</p>
+<pre><code>// test/library.test.js
+const Library = artifacts.require("Library");
+
+contract("Library", (accounts) =&gt; {
+  let lib;
+  const [alice, bob] = accounts; // TronBox 注入的测试账户（base58）
+
+  before(async () =&gt; {
+    lib = await Library.deployed();
+  });
+
+  it("上架一本书并可查询", async () =&gt; {
+    await lib.addBook("三体", web3.utils.toWei("1", "szabo")); // 仅示例单位
+    const count = await lib.bookCount();
+    assert(count.toNumber() &gt;= 1, "应有至少一本书");
+  });
+
+  it("租书需附带 TRX", async () =&gt; {
+    const id = (await lib.bookCount()).toNumber();
+    const before = await web3.eth.getBalance(bob);
+    await lib.rentBook(id, 3, { from: bob, value: web3.utils.toWei("3", "szabo") });
+    const [,, owner,, avail] = await lib.getBook(id);
+    assert.equal(avail, false, "书应被标记为已借出");
+  });
+});
+</code></pre>
+<pre><code>// 在 tronbox-config.js 的 networks 里加测试账户
+// test: {
+//   privateKey: "测试私钥",
+//   fullHost: "http://127.0.0.1:9090",  // 本地 private net
+//   network_id: "*"
+// }
+// 运行：tronbox test --network test
+</code></pre>
+<div class="tip"><b>测试要点：</b>TronBox 注入的 <code>accounts</code> 是 TRON 地址；<code>web3</code> 同样可用（TronBox 自带）。断言逻辑与以太坊一致，只是金额单位/费用用 TRON 的 SUN 体系。CI 里建议连接本地 private net 跑测试，避免消耗测试网资源。</div>
+
+<h2 id="s14">14. 调试与常见合约错误</h2>
+<p>为了不浪费测试网资源、又能快速迭代，强烈建议本地起一条 <strong>TRON 私链（private net）</strong>：官方提供 <code>java-tron</code> 的 private net 镜像，或用 docker 一键启动，<code>fullHost</code> 指向 <code>http://127.0.0.1:9090</code>。本地私链上 TRX 随意生成、零成本，适合跑 TronBox 测试与调试 revert。</p>
+<pre><code># 本地私链常用命令（示例，以官方 docker 镜像为准）
+# docker run -d -p 9090:9090 -p 8090:8090 tronprotocol/java-tron private
+# 启动后用 tronbox 的 development 网络（fullHost: http://127.0.0.1:9090）即可
+</code></pre>
+<p>本地私链起好后，把 tronbox-config.js 的 <code>development</code> 网络指向它，<code>tronbox migrate --network development</code> 即可零成本反复部署调试。等逻辑稳定，再切到 Nile 做联调，最后才上主网。</p>
+<div class="tip"><b>调试心法：</b>90% 的“部署/调用失败”都集中在三处——<strong>feeLimit 不够、构造函数参数编码错、地址格式/网络不匹配</strong>。遇到问题时按这张表与第 14 节错误码逐项排除，比盲目改代码高效得多。</div>
+<p>至此，你已经具备在 TRON 上从零开发、部署、调试智能合约的全部能力。下一篇我们将把这些能力用于真实的 DeFi 与支付场景。</p>
+<table>
+<tr><th>错误信息 / 现象</th><th>含义</th><th>处理</th></tr>
+<tr><td>REVERT / contractResult 非空</td><td>合约 require 失败或抛错</td><td>读 contractResult 解码，检查参数与前置条件（如余额、授权）</td></tr>
+<tr><td>OUT_OF_ENERGY</td><td>Energy 不足且 feeLimit 不够燃烧</td><td>提高 feeLimit，或先质押/租 Energy</td></tr>
+<tr><td>feeLimit too low</td><td>send 时 feeLimit 低于最小要求</td><td>feeLimit 至少覆盖预估 Energy 燃烧价</td></tr>
+<tr><td>CONTRACT_VALIDATE_ERROR</td><td>合约地址非法 / 未部署 / ABI 不匹配</td><td>核对合约地址与 ABI 版本一致</td></tr>
+<tr><td>TVMCONTRACT_INVALID</td><td>构造函数参数编码错误</td><td>检查 bytecode 拼接或改用 parameters 字段</td></tr>
+<tr><td>超时未确认</td><td>ref_block 过期或网络拥堵</td><td>重新构造并广播交易</td></tr>
+</table>
+<p>一个实用调试技巧：把 <code>getTransactionInfo</code> 的 <code>log</code> 字段解析出来，对照合约 event 的 ABI 解码，就能看到合约内部到底发生了什么——这比盲目重试高效得多。</p>
+<pre><code>// 解码合约事件日志（用 tronweb 的 abi 解码）
+async function decodeLogs(txID, abi) {
+  const info = await tronWeb.trx.getTransactionInfo(txID);
+  const logs = info.log || [];
+  for (const lg of logs) {
+    // lg.topics / lg.data 可配合 ethers/utils 的默认 abiCoder 解码
+    console.log("raw log:", lg);
+  }
+}
+</code></pre>
+<div class="warn"><b>最后提醒：</b>TRON 合约一旦部署<strong>不可更改</strong>（除非用第 9.5 节代理模式）。上线主网前，务必在 Nile 做完整的“部署→交互→异常路径→事件→升级（若有）”回归，并且通过 Tronscan 验证源码，给用户可审计的保障。</div>
+
+<div class="exercise"><b>动手练习</b><ol>
+<li>用 <code>tronbox init</code> 新建工程，部署 HelloTron 到 Nile，并用脚本读/写一次问候语。</li>
+<li>部署完整 MyToken 合约（初始供应 1000000），用 TronWeb 查询 totalSupply 与 owner 余额。</li>
+<li>按 8.2/8.3 写好 Library DApp 前端，在 Nile 上架一本“三体”、价格 1 TRX/天，并用另一个 TronLink 账号租借 3 天，验证书主收到 3 TRX。</li>
+<li>用 estimateEnergy 估算一次 MyToken.transfer 的 Energy，对比你实际交易回执里的 energy_usage。</li>
+<li>把一份你已有的 ERC-20 源码按第 11 节 Checklist 改成 TRON 版本（只改外围，不改合约逻辑），在 Nile 跑通。</li>
+</ol></div>
+
+<div class="checklist"><b>自检清单（能说出/能做到才算掌握）</b><ul>
+<li>能说出 TronBox 的 compile / migrate / console 作用，并写好 tronbox-config.js；</li>
+<li>能区分 Nile 与 Shasta，知道私钥用 .env 管理；</li>
+<li>能列出至少 5 条 Solidity on TRON 与以太坊的差异；</li>
+<li>能独立部署 HelloTron 并用 TronWeb 完成 .call()/.send()；</li>
+<li>能贴出一个完整、可编译的 TRC-20 合约；</li>
+<li>能解释图书馆 DApp 里 feeLimit 与 callValue 的区别，并写出附带 TRX 的调用；</li>
+<li>能处理 Energy 不足（OUT_OF_ENERGY）的报错与重试；</li>
+<li>理解 TRON 上代理/升级模式的注意点；</li>
+<li>能用一张表说明把 ERC-20/DApp 迁到 TRON 要改哪些外围。</li>
+</ul></div>
+
+<div class="pager"><a href="10-tron.html"><b>上一篇</b>← TRON 篇 I：概念与钱包开发</a><a class="next" href="12-tron-defi.html"><b>下一篇</b>TRON 篇 III：DeFi 与支付应用实战 →</a></div>
+</main></body></html>
