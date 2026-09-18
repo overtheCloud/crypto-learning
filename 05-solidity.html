@@ -608,17 +608,19 @@ contract MiniAMM {
 
     // ---- 流动性 ----
     function addLiquidity(uint256 tokenAmt) external payable returns (uint256 lp) {
+        uint256 depositToken = tokenAmt;           // 实际入账的 token 数量
         if (totalLp == 0) {
-            lp = address(this).balance;            // 首笔以 ETH 量为份额基准
+            lp = msg.value;                        // 首笔：以注入的 ETH 量为份额基准
         } else {
-            // 按当前比例注入，保持 k 不变
+            // 按当前储备比例注入，保持价格（比率）不变
             uint256 ethAmt = msg.value;
             uint256 needToken = reserveToken * ethAmt / reserveEth;
             require(tokenAmt &gt;= needToken, "token short");
+            depositToken = needToken;              // 只按比例收取，多给的留在用户钱包
             lp = totalLp * ethAmt / reserveEth;
         }
-        _safeTransferFrom(token, msg.sender, address(this), tokenAmt);
-        reserveToken += tokenAmt;
+        _safeTransferFrom(token, msg.sender, address(this), depositToken);
+        reserveToken += depositToken;
         reserveEth += msg.value;
         lpOf[msg.sender] += lp;
         totalLp += lp;
@@ -640,14 +642,13 @@ contract MiniAMM {
     // ---- 交易 ----
     function swapExactEthForToken() external payable returns (uint256 tokenOut) {
         uint256 ethIn = msg.value;
-        // 扣除手续费后的有效输入
+        // 扣除 0.3% 手续费后的有效输入（手续费留在池内，归全体 LP）
         uint256 ethInAfter = ethIn * (BPS - FEE_BPS) / BPS;
-        uint256 newEth = reserveEth + ethInAfter;
-        // x*y=k =&gt; 新 token 储备 = k / newEth；输出 = 原储备 - 新储备
-        uint256 newToken = reserveEth * reserveToken / newEth; // 注：用 k/reserveEth
+        // x*y=k =&gt; 新 token 储备 = k / (原ETH储备 + 有效输入)；输出 = 原储备 - 新储备
+        uint256 newToken = reserveEth * reserveToken / (reserveEth + ethInAfter);
         tokenOut = reserveToken - newToken;
         require(tokenOut &gt; 0, "no out");
-        reserveEth = newEth;
+        reserveEth += ethIn;        // 全额入账（含手续费）：k 随每笔交易缓慢增长
         reserveToken = newToken;
         _safeTransfer(token, msg.sender, tokenOut);
         emit Swap(msg.sender, ethIn, 0, 0, tokenOut);
@@ -655,12 +656,11 @@ contract MiniAMM {
 
     function swapExactTokenForEth(uint256 tokenIn) external returns (uint256 ethOut) {
         uint256 tokenInAfter = tokenIn * (BPS - FEE_BPS) / BPS;
-        uint256 newToken = reserveToken + tokenInAfter;
-        uint256 newEth = reserveToken * reserveEth / newToken;
+        uint256 newEth = reserveToken * reserveEth / (reserveToken + tokenInAfter);
         ethOut = reserveEth - newEth;
         require(ethOut &gt; 0, "no out");
         _safeTransferFrom(token, msg.sender, address(this), tokenIn);
-        reserveToken = newToken;
+        reserveToken += tokenIn;    // 全额入账（含手续费）
         reserveEth = newEth;
         (bool ok, ) = msg.sender.call{value: ethOut}("");
         require(ok, "eth out failed");
@@ -687,7 +687,7 @@ contract MiniAMM {
     }
 }
 </code></pre>
-<div class="note"><b>逐段讲解：</b>① 核心不变量是 <code>reserveEth * reserveToken</code> 在扣费后保持恒定（此处用 <code>ethInAfter</code> 计入手续费，等价于 Uniswap V2 的 <code>(x+dx')(y-dy)=k</code>）；② addLiquidity 首笔以 ETH 量为份额基准，后续按现有比例注入防套利；③ getAmountOut 是通用兑换公式，与 swapExactTokenForEth 逻辑一致，可单独测试；④ 用底层 <code>call</code> 封装 ERC20 转账并对返回值做兜底（兼容不返回 bool 的老代币），等价于 OZ 的 SafeERC20；⑤ swap 函数先更新储备再发币（Effects 在 Interaction 前），但本合约不持有外部状态，重点是 math 正确。</div>
+<div class="note"><b>逐段讲解：</b>① 核心不变量是 <code>reserveEth * reserveToken = k</code>：输出按<strong>扣费后的有效输入</strong>计算，而储备按<strong>全额</strong>入账——手续费沉淀在池内使 k 缓慢增长，这就是 LP 赚手续费的来源（与 Uniswap V2 一致）；② addLiquidity 首笔以注入 ETH 量为份额基准，后续强制按现有储备比例注入、多余 token 不收，防止破坏价格；③ getAmountOut 是通用兑换公式，与 swap 逻辑一致，可单独测试；④ 用底层 <code>call</code> 封装 ERC20 转账并对返回值做兜底（兼容不返回 bool 的老代币），等价于 OZ 的 SafeERC20；⑤ swap 先更新储备再发币（Effects 在 Interaction 前），符合 CEI 安全模式。</div>
 
 <h2 id="s12">12. 工程实践：Foundry 测试与部署</h2>
 <h3>12.1 Foundry 测试</h3>
@@ -787,6 +787,7 @@ pragma solidity ^0.8.24;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 contract Box is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint256 public value;

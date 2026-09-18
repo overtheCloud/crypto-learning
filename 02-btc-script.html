@@ -143,7 +143,7 @@ OP_EQUAL    弹出两个，相等则压入 1        [1]
 <h3>3.3 密码学操作码</h3>
 <table>
 <tr><th>操作码</th><th>作用</th><th>备注</th></tr>
-<tr><td>OP_RIPEMD160 / OP_SHA1 / OP_SHA256</td><td>对应哈希</td><td>OP_SHA256 用于 HTLC 的支付哈希</td></tr>
+<tr><td>OP_RIPEMD160 / OP_SHA1 / OP_SHA256</td><td>对应哈希</td><td>OP_SHA256 用于 HTLC（哈希时间锁合约，Hash Time-Locked Contract，闪电网络的基石，第 7 节展开）的支付哈希</td></tr>
 <tr><td>OP_HASH160</td><td>RIPEMD160(SHA256(x))，输出 20 字节</td><td>地址与脚本哈希的标准做法</td></tr>
 <tr><td>OP_HASH256</td><td>SHA256(SHA256(x))，输出 32 字节</td><td>txid、区块头用它</td></tr>
 <tr><td>OP_CHECKSIG</td><td>弹出公钥与签名，验签成功压 1</td><td>签名内含 1 字节 SIGHASH 标志</td></tr>

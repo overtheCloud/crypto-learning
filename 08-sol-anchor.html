@@ -706,7 +706,10 @@ describe("escrow", () =&gt; {
 
   async function getAta(owner: PublicKey, mint: PublicKey, payer: Keypair) {
     const ata = getAssociatedTokenAddressSync(mint, owner);
-    // 省略创建 ATA 的代码（用 createAssociatedTokenAccount）
+    // 若 ATA 不存在则创建（测试必须，否则 mintTo / 转账会因账户不存在失败）
+    await createAssociatedTokenAccount(
+      provider.connection, payer, mint, owner
+    ).catch(() =&gt; {}); // 已存在则忽略报错
     return ata;
   }
 

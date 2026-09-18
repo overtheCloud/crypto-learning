@@ -65,9 +65,6 @@
 <a href="#s17">17. 查询交易历史与链上事件</a>
 <a href="#s18">18. 调试技巧与常见错误</a>
 <a href="#s19">19. 综合：最小 CLI 钱包脚本</a>
-<a href="#s17">17. 查询交易历史与链上事件</a>
-<a href="#s18">18. 调试技巧与常见错误</a>
-<a href="#s19">19. 综合：最小 CLI 钱包脚本</a>
 </div>
 
 <h2 id="s1">1. Sui 是什么：定位与 Mysten Labs</h2>
@@ -302,11 +299,13 @@ const mnemonic = generateMnemonic(wordlist);
 console.log("助记词:", mnemonic);
 
 // 3) 从助记词按标准路径 m/44'/784'/0'/0'/0' 派生密钥
-//    derivePath 在 SDK 内部使用 @mysten/sui 的 fromSeed
+//    推荐直接用 SDK 内置的 deriveKeypair：内部按 SLIP-0010 规范做 ed25519 派生，
+//    结果与 Sui CLI / Slush 钱包导入同一助记词得到的地址一致
 import { Ed25519Keypair as KP } from "@mysten/sui/keypairs/ed25519";
-const seed = mnemonicToSeedSync(mnemonic, ""); // 第二个参数为可选 passphrase
-const derived = KP.fromSeed(seed.slice(0, 32)); // 取前 32 字节作为 ed25519 种子
-console.log("派生地址:", derived.getPublicKey().toSuiAddress());</code></pre>
+const derived = KP.deriveKeypair(mnemonic, "m/44'/784'/0'/0'/0'");
+console.log("派生地址:", derived.getPublicKey().toSuiAddress());
+// 注意：不要手动 mnemonicToSeedSync 后 slice(0,32) 当种子——
+// 那是简化写法，派生路径不符合 SLIP-0010，地址会与官方工具不一致。</code></pre>
 <div class="warn"><b>安全警告：</b>生产环境绝不要把助记词/私钥明文打印或存前端。真实钱包应使用受保护环境（浏览器 Extension 的 isolated world、或系统密钥库）。本文仅为教学演示。</div>
 
 <h3>10.3 查询余额 getBalance</h3>

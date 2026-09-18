@@ -421,8 +421,7 @@ console.log("多签配置广播结果:", ret);
   "dependencies": {
     "tronweb": "^5.4.0",
     "bip39": "^3.1.0",
-    "hdkey": "^1.1.1",
-    "ethereumjs-util": "^7.1.5"
+    "hdkey": "^1.1.1"
   }
 }
 </code></pre>
@@ -544,7 +543,7 @@ transferTrx("T接收方地址", 1.5).then(console.log).catch(console.error);
 
 <h2 id="s14">14. TRC-20（USDT）实战</h2>
 <p>主网 USDT 合约地址：<code>TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdjmy</code>（TRC-20）。Nile 测试网有对应的测试 USDT 合约，可在 Tronscan Nile 上搜索 “USDT” 找到水龙头发行的测试币地址。</p>
-<div class="note"><b>精度：</b>USDT 是 <strong>6 位小数</strong>（不是 ETH 上 USDT 的 6 位，这里一致；但注意有些 TRC-20 是 18 位）。转账时 <code>amount * 10^6</code>。</div>
+<div class="note"><b>精度：</b>USDT 是 <strong>6 位小数</strong>（与以太坊上 USDT 一致）；但注意有些 TRC-20 是 18 位。转账时 <code>amount * 10^6</code>。</div>
 <pre><code>// demo5-trc20.js —— TRC-20 (USDT) 余额查询与转账
 const TronWeb = require("tronweb");
 const tronWeb = new TronWeb({

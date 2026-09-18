@@ -141,6 +141,7 @@ const result = await connection.confirmTransaction(sig, "confirmed");
 console.log("成交签名:", sig, "错误:", result.value.err);
 </code></pre>
 <div class="note"><b>滑点与优先费</b>：<code>slippageBps</code> 设置过低在波动行情会频繁失败；过高则可能被套利。优先费用 <code>prioritizationFeeLamports</code> 在网络拥堵时建议设 <code>"auto"</code> 或显式给值（如 100000），否则交易可能长时间不被打包。</div>
+<div class="tip"><b>确认交易的新版写法</b>：<code>confirmTransaction(sig, "confirmed")</code> 只传签名在 blockhash 过期时可能误报失败。生产代码推荐携带策略对象：<code>confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed")</code>（两个字段来自 <code>getLatestBlockhash()</code>）。本篇为简洁沿用简写，原理一致。</div>
 
 <h3>2.2 前端钱包适配器版本</h3>
 <p>在 React 里，私钥由用户钱包持有，你只需拿到 <code>VersionedTransaction</code> 让用户签名：</p>
@@ -737,5 +738,5 @@ console.log("集中流动性区间 tick:", lowerTick, "-", upperTick);
 <li>能读取 Pyth 喂价并意识到"链上价格可能陈旧"的风险。</li>
 </ul></div>
 
-<div class="pager"><a href="08-sol-anchor.html"><b>上一篇</b>← SOL 篇 II：Rust 与 Anchor 合约开发</a><a class="next" href="10-tron.html"><b>下一篇</b>TRON 篇：波场钱包与 USDT →</a></div>
+<div class="pager"><a href="08-sol-anchor.html"><b>上一篇</b>← SOL 篇 II：Rust 与 Anchor 合约开发</a><a class="next" href="10-tron.html"><b>下一篇</b>TRON 篇 I：概念与钱包开发 →</a></div>
 </main></body></html>

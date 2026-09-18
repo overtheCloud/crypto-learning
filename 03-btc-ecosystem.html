@@ -541,7 +541,7 @@ console.log("bc1p 地址:", address);
 <tr><td>cardinal（bc1q 等）</td><td>日常收付款、找零</td><td>默认地址</td></tr>
 <tr><td>ordinal / taproot（bc1p）</td><td>接收、保管铭文与 Runes</td><td>单独标签，不自动用于找零</td></tr>
 </table>
-<pre><code>// 双地址模式：生成两种接收地址
+<pre><code>// 伪代码：bip84/bip86 为已构造的 HD 派生器；以下采用 bitcoinjs-lib v5 风格 API 仅为示意，不可直接运行
 function deriveAddresses(xpub, index, network) {
   // cardinal：BIP84 P2WPKH
   const cardinal = bitcoin.payments.p2wpkh({
@@ -663,7 +663,6 @@ ord decode &lt;reveal_txid&gt;
 <li><b>备份完整</b>：生态私钥、stash、通道 db、blinding key 都要纳入备份流程。</li>
 </ul>
 <div class="note"><b>如何读这张表：</b>它只给「最小支持」方向，不是完整方案。每个方案的安全边界请回到对应小节细读，切勿把它当成「开箱即用」的承诺。</div>
-<div class="table">
 <table>
 <tr><th>如果你的用户想要…</th><th>推荐方案</th><th>钱包最小支持</th></tr>
 <tr><td>买咖啡/小额即时付</td><td>闪电网络</td><td>通道管理 + 路由</td></tr>
@@ -674,7 +673,6 @@ ord decode &lt;reveal_txid&gt;
 <tr><td>链下资产/稳定币</td><td>RGB</td><td>stash 存储 + 验证</td></tr>
 <tr><td>赚取 BTC 收益</td><td>Babylon 质押</td><td>时间锁构造 + 监控</td></tr>
 </table>
-</div>
 <div class="checklist"><b>上线前自检：</b>
 <ul>
 <li>所有非主链资产都在 UI 标注信任来源与风险等级。</li>

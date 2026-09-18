@@ -70,7 +70,7 @@
 <table>
 <tr><th>抽象</th><th>作用</th><th>对比比特币</th></tr>
 <tr><td>账户 Account</td><td>状态的最小单元，含余额与（合约的）代码/存储</td><td>比特币只有 UTXO，无账户</td></tr>
-<tr><td>状态树 State Trie</td><td>用 MPT 把全账户组织成可验证哈希树</td><td>UTXO 集合，无统一状态根</td></tr>
+<tr><td>状态树 State Trie</td><td>用 MPT（Merkle Patricia Trie，默克尔帕特里夏树，详见 2.1 节）把全账户组织成可验证哈希树</td><td>UTXO 集合，无统一状态根</td></tr>
 <tr><td>EVM</td><td>栈式虚拟机，执行合约字节码</td><td>Script 非图灵完备</td></tr>
 <tr><td>Gas</td><td>计量计算/存储成本，防止滥用与死循环</td><td>以「脚本大小/签名操作」粗略计费</td></tr>
 <tr><td>交易 Transaction</td><td>触发状态变更的消息（转账或调合约）</td><td>交易本质是 UTXO 的消费与创建</td></tr>
@@ -264,7 +264,8 @@ import "dotenv/config";
 
 const MNEMONIC = process.env.MNEMONIC;
 
-// 1) 从助记词得到 BIP-39 种子（64 字节）
+// 1) 从助记词得到 BIP-39 种子（64 字节）——此处仅演示流程，
+//    实际派生由下一行的 fromPhrase 内部自动完成，seed 不必手动使用
 const seed = ethers.Mnemonic.fromPhrase(MNEMONIC).computeSeed();
 
 // 2) 构造 HD 节点，沿 BIP-44 以太坊路径派生
@@ -279,12 +280,12 @@ console.log("地址(小写):", hdNode.address.toLowerCase());
 
 // 3) 一次性派生同一助记词下的多个地址（账户浏览）
 const base = ethers.HDNodeWallet.fromPhrase(MNEMONIC);
-for (let i = 0; i < 3; i++) {
+for (let i = 0; i &lt; 3; i++) {
   const w = base.derivePath(`m/44'/60'/0'/0/${i}`);
   console.log(`地址[${i}]:`, w.address);
 }
 </code></pre>
-<div class="tip"><b>验证：</b>用上面的测试助记词（BIP-39 标准测试向量），派生出的第 0 地址应为 <code>0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2E0d3C9e0</code> 的对应值；可与 MetaMask / ganache 对照。生产环境务必替换为随机生成的助记词。</div>
+<div class="tip"><b>验证：</b>用上面的测试助记词（BIP-39 标准测试向量），派生出的第 0 地址应为 <code>0x5aAeb6b2b3e1d8e8a1b3f3c0c0e3a7d2E0d3C9e0</code>；可与 MetaMask / ganache 对照。生产环境务必替换为随机生成的助记词。</div>
 
 <h3>8.3 地址 checksum 编解码</h3>
 <p>手动实现 EIP-55 校验和，理解其本质：</p>
@@ -484,7 +485,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider); // 也可 fromPhrase
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 // 1) 用 eth_feeHistory 估算最近的 base fee 走势
 const feeData = await provider.getFeeData();
@@ -526,7 +527,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 // 场景：之前发的交易卡住了（已知其 nonce 与哈希）
 const stuckNonce = await wallet.getNonce("latest"); // 假设卡在 latest nonce
@@ -574,7 +575,7 @@ const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
 const txHash = "0x你的交易哈希";
 
 const receipt = await provider.getTransactionReceipt(txHash);
-console.log("状态:", receipt.status, "gasUsed:", receipt.gasUsued?.toString() ?? receipt.gasUsed.toString());
+console.log("状态:", receipt.status, "gasUsed:", receipt.gasUsed?.toString() ?? receipt.gasUsed.toString());
 console.log("Logs 数量:", receipt.logs.length);
 
 // 解析某个 ERC20 Transfer 事件（需 ABI 片段）

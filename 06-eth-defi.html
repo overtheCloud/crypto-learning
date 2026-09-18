@@ -75,7 +75,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545"); // fork
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 const aave = new ethers.Contract(AAVE_POOL, [
   "function supply(address,uint256,address,uint16) external",
@@ -86,16 +86,16 @@ const uniswap = new ethers.Contract(ROUTER, [
 const lido = new ethers.Contract(STETH, ["function submit(address) external payable"], wallet);
 
 // 积木 1：Aave 抵押 WETH
-await aave.supply(WETH, parseEther("1"), wallet.address, 0);
+await aave.supply(WETH, ethers.parseEther("1"), wallet.address, 0);
 // 积木 2：Uniswap 用借来的 DAI 换 WETH（需先 borrow + approve）
 await uniswap.swapExactTokensForTokens(usdcAmt, minOut, [USDC, WETH], wallet.address, deadline);
 // 积木 3：Lido 把 ETH 质押换 stETH
-await lido.submit(wallet.address, { value: parseEther("0.5") });
+await lido.submit(wallet.address, { value: ethers.parseEther("0.5") });
 
 // 以上三步若放在同一个合约函数里顺序执行，即「原子可组合」；
 // 用 JS 顺序发送则是多笔独立交易（任一步失败不会自动回滚前面的）。
 </code></pre>
-<div class="tip"><b>原子 vs 非原子：</b>真正的「乐高」威力在于把多步放进<strong>同一笔交易</strong>（一个合约函数内顺序 call），任一步 revert 整体回滚，没有中间态风险。用 ethers 逐笔发是「分步组合」，适合演示，但生产套利/清算必须合约内原子化。</div></p>
+<div class="tip"><b>原子 vs 非原子：</b>真正的「乐高」威力在于把多步放进<strong>同一笔交易</strong>（一个合约函数内顺序 call），任一步 revert 整体回滚，没有中间态风险。用 ethers 逐笔发是「分步组合」，适合演示，但生产套利/清算必须合约内原子化。</div>
 <table>
 <tr><th>积木层</th><th>代表</th><th>提供能力</th></tr>
 <tr><td>资产层</td><td>ERC20/ERC721、USDC、stETH</td><td>可组合的价值载体</td></tr>
@@ -260,7 +260,7 @@ HF = (7500 * 0.8) / 6000 = 6000 / 6000 = 1.0      // 临界，随时被清算
 <tr><th>范式</th><th>代表</th><th>锚定机制</th><th>风险</th></tr>
 <tr><td>法币托管</td><td>USDC、USDT</td><td>链下法币 1:1 储备（审计托管）</td><td>中心化冻结、储备透明度</td></tr>
 <tr><td>超额抵押</td><td>DAI</td><td>链上加密资产超额抵押（如 150% 的 ETH）</td><td>抵押品暴跌需清算</td></tr>
-<tr><td>算法（无抵押）</td><td>UST（已崩）</td><td>算法供需调节 + 铸烧毁锚</td><td>死亡螺旋，# 脱锚归零</td></tr>
+<tr><td>算法（无抵押）</td><td>UST（已崩）</td><td>算法供需调节 + 铸烧毁锚</td><td>死亡螺旋，脱锚归零</td></tr>
 </table>
 <div class="warn"><b>UST 教训：</b>2022 年 Terra/UST 靠「质押赚高息吸引需求、抛压时用销毁 UST 铸 LUNA 接盘」维持锚定。一旦信心崩塌，LUNA 无限增发致价格崩塌，UST 彻底脱锚归零——证明无储备的算法稳定币在极端行情下缺乏支撑。这是 DeFi 史上最重要的反面教材。</div>
 
@@ -352,7 +352,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 // 主网地址示例（fork 时直接用）
 const ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap V2 Router
@@ -404,7 +404,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC);
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 // 主网 V3 Pool（Sepolia 有单独部署地址，fork 时直接用主网地址）
 const POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
@@ -572,7 +572,7 @@ console.log("余额:", ethers.formatEther(await provider.getBalance(wallet.addre
 <h3>13.2 Damn Vulnerable DeFi 闯关建议</h3>
 <p>Damn Vulnerable DeFi 是「边攻破边学」的实战库，每关模拟一个真实漏洞（重入、预言机操纵、闪电贷、访问控制等）。建议顺序：① 先看提示想攻击向量；② 用 Foundry 写 exploit 测试；③ 对照官方 solution 复盘。它把本篇所有原理串成「攻击者视角」，是成为安全工程师的最佳路径。</p>
 <pre><code># 克隆并安装
-git clone https://github.com/twonyon/damn-vulnerable-defi
+git clone https://github.com/tinchoabbate/damn-vulnerable-defi
 cd damn-vulnerable-defi &amp;&amp; npm install
 # 每关在 test/ 下写 exploit，forge test 通过即过关
 </code></pre>
@@ -589,7 +589,7 @@ cd damn-vulnerable-defi &amp;&amp; npm install
 <tr><td>EigenLayer</td><td>docs.eigenlayer.xyz</td><td>再质押、AVS</td></tr>
 <tr><td>1inch</td><td>docs.1inch.io</td><td>聚合路由 API</td></tr>
 <tr><td>Flashbots</td><td>docs.flashbots.net</td><td>MEV、私有交易保护</td></tr>
-<tr><td>Damn Vulnerable DeFi</td><td>github.com/twonyon/damn-vulnerable-defi</td><td>安全闯关</td></tr>
+<tr><td>Damn Vulnerable DeFi</td><td>github.com/tinchoabbate/damn-vulnerable-defi</td><td>安全闯关</td></tr>
 </table>
 
 <h2 id="s14">14. 综合案例：循环贷与闪电贷原子套利</h2>
@@ -603,7 +603,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545"); // fork 环境
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
 const UNISWAP_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
@@ -642,7 +642,7 @@ for (let i = 0; i &lt; LOOPS; i++) {
   );
   const rec = await out.wait();
   // 下一轮本金 = 刚换回的 WETH（从事件/receipt 解析，此处简化为继续循环）
-  amountWeth = ethers.parseUnits("0.5", 18); // 演示用定值
+  amountWeth = ethers.parseUnits("0.5", 18); // 演示用定值；生产环境应从上一步 swap 回执解析实际兑得数量（可用 Router 的 getAmountsOut 预估）
   console.log(`第 ${i+1} 轮完成，HF=`, ethers.formatUnits((await pool.getUserAccountData(wallet.address)).healthFactor, 18));
 }
 </code></pre>
@@ -656,7 +656,7 @@ import { ethers } from "ethers";
 import "dotenv/config";
 
 const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-const wallet = new ethers.Wallet(process.env.MNEMONIC, provider);
+const wallet = ethers.HDNodeWallet.fromPhrase(process.env.MNEMONIC, undefined, "m/44'/60'/0'/0/0").connect(provider);
 
 const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
 const ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";

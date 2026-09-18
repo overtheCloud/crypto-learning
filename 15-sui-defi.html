@@ -172,7 +172,7 @@ await sdk.fullClient.signAndExecuteTransaction({ transaction: addTx, signer: key
 <h3>2.6 聚合器与路由（7k / Hop 简述）</h3>
 <p>当单池滑点较大时，可用<b>聚合器</b>在多个池（Cetus 各区间 + DeepBook）间寻最优路径。以社区聚合器（如 7k、Hop）为例，它们对外暴露「给输入币+数量 → 返回最优路由 PTB」的接口。</p>
 <pre><code>// 以典型聚合器调用形态示意（具体包/方法名以其文档为准）
-import { AggregatorClient } from "@7kprotocol/sui-agent-kit"; // 示意
+import { AggregatorClient } from "@7kprotocol/sdk-ts"; // 7k 官方 TS SDK（示意，以最新文档为准）
 
 const agg = new AggregatorClient({ client, env: "mainnet" });
 

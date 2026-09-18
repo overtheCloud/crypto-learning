@@ -349,7 +349,7 @@ const hd = HDKey.fromMasterSeed(seed);
 <span class="cmt" data-page-node-id="AMcn9E9F76ufi76HqoAI4F">// 2. 原生隔离见证路径派生首个地址</span>
 const path = "m/84'/0'/0'/0/0";
 const child = hd.derive(path);
-const address = bitcoin.getAddress(child.publicKey);   <span class="cmt" data-page-node-id="KmKaxsFDn4hMGMBLFCgIct">// bc1q...</span>
+const address = bitcoin.p2wpkh(child.publicKey).address; <span class="cmt" data-page-node-id="KmKaxsFDn4hMGMBLFCgIct">// bc1q...</span>
 
 <span class="cmt" data-page-node-id="t6qwdYfxjbCljFKLZLkT1w">// 3. 构建转账（伪代码：UTXO 需从 Esplora/mempool API 拉取）</span>
 <span class="cmt" data-page-node-id="xnJTBfpU66ZGtOdUd1cL5P">// psbt.addInput(utxo) → psbt.addOutput(收款, 金额) </span>

@@ -225,6 +225,7 @@ const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 console.log("已连接 devnet，区块高度:", await connection.getBlockHeight());
 </code></pre>
+<div class="note"><b>运行方式</b>：本篇示例为 TypeScript/ESM 写法（带类型标注、顶层 <code>await</code>）。推荐用 <code>tsx</code> 直接跑：<code>npm i -D tsx typescript</code>，保存为 <code>demo.ts</code> 后执行 <code>npx tsx demo.ts</code>。若坚持用纯 JavaScript：删掉类型标注（如 <code>: string</code>），文件存为 <code>.mjs</code> 用 <code>node demo.mjs</code> 运行。</div>
 
 <h3>8.1 生成密钥对 & 从助记词派生</h3>
 <p>Solana 地址派生路径为 <code>m/44'/501'/0'/0'</code>（BIP44，coin type 501 即 SOL）。</p>

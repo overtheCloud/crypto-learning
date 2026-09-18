@@ -301,7 +301,7 @@ public entry fun whoami(ctx: &mut TxContext) {
         };
 
         // String 有两种：ASCII（ascii::String）与 UTF8（string::String）
-        let name: String = sui::string::utf8(b"你好 Sui");
+        let name: String = sui::string::utf8(b"hello sui");
     }
 }</code></pre>
 <div class="tip"><b>提示：</b>Sui 里展示名/描述常用 <code>String</code>（UTF8），而合约内部标识（symbol）常用 <code>vector&lt;u8&gt;</code> 或 <code>ascii::String</code>。</div>
@@ -352,9 +352,11 @@ public entry fun whoami(ctx: &mut TxContext) {
         let ts = clock::timestamp_ms(clock); // 毫秒
     }
 
-    // 取随机数（需引用 Random 对象；链上随机用于游戏/抽奖）
-    public entry fun roll(random: &Random) {
-        let rand = random::generate(random, /*种子*/ b"seed", ctx);
+    // 取随机数（需引用共享的 Random 对象 0x8；链上随机用于游戏/抽奖）
+    public entry fun roll(random: &Random, ctx: &mut TxContext) {
+        // 先创建随机数生成器，再按类型取值（还有 generate_u8/u16/u128/bool 等）
+        let mut gen = random::new_generator(random, ctx);
+        let _dice = random::generate_u64_in_range(&mut gen, 1, 6); // 1~6
     }
 }</code></pre>
 <div class="note"><b>Clock 与 Random 是共享对象：</b>调用时由 PTB 把系统的 <code>0x6</code>（Clock）或 <code>Random</code> 对象作为实参传入。它们走共识，但读取开销低。</div>

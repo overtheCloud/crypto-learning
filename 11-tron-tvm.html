@@ -661,7 +661,7 @@ contract("Library", (accounts) =&gt; {
   it("租书需附带 TRX", async () =&gt; {
     const id = (await lib.bookCount()).toNumber();
     const before = await web3.eth.getBalance(bob);
-    await lib.rentBook(id, 3, { from: bob, value: web3.utils.toWei("3", "szabo") });
+    await lib.rentBook(id, 3, { from: bob, value: web3.utils.toWei("3", "szabo") }); // 仅示例单位；TRON 金额单位是 SUN（1 TRX = 10^6 SUN），实际项目用 tronWeb.toSun(3)
     const [,, owner,, avail] = await lib.getBook(id);
     assert.equal(avail, false, "书应被标记为已借出");
   });
